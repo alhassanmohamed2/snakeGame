@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Mobile UI
     const startBtnMobile = document.getElementById('start-respawn-btn-mobile');
     const pauseBtnMobile = document.getElementById('pause-btn-mobile');
+    const toggleControlsBtn = document.getElementById('toggle-controls-btn');
     
     // Mobile Dropdown Menu
     const menuToggleBtn = document.getElementById('menu-toggle-btn');
@@ -31,11 +32,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Pause Overlay
     const pauseOverlay = document.getElementById('pause-overlay');
 
+    // D-Pad Elements
+    const dPadContainer = document.getElementById('d-pad-container');
+    const upBtn = document.getElementById('up-btn');
+    const downBtn = document.getElementById('down-btn');
+    const leftBtn = document.getElementById('left-btn');
+    const rightBtn = document.getElementById('right-btn');
+
     // --- Client State ---
     let selfId = null;
     let GRID_SIZE = 30;
     let hasJoinedGame = false;
-    let lastGameState = null; // Store the last received game state
+    let lastGameState = null; 
+    let touchControlsEnabled = true; // Touch-drag is the default on mobile
 
     // --- Connection Handling ---
     socket.on('connect', () => {
@@ -56,14 +65,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Game State & Drawing ---
     socket.on('gameState', (state) => {
-        lastGameState = state; // Always update the last known state
+        lastGameState = state;
         drawGame(state);
         updateUI(state);
     });
 
     function resizeCanvas() {
         const container = canvas.parentElement;
-        const size = container.clientWidth;
+        const size = Math.min(container.clientWidth, container.clientHeight);
         canvas.width = size;
         canvas.height = size;
     }
@@ -177,11 +186,23 @@ document.addEventListener('DOMContentLoaded', () => {
         handlePause();
         mobileMenuDropdown.classList.add('hidden');
     });
+    
+    toggleControlsBtn.addEventListener('click', () => {
+        touchControlsEnabled = !touchControlsEnabled;
+        dPadContainer.classList.toggle('hidden');
+        
+        if (touchControlsEnabled) {
+            controlsHelper.textContent = 'Touch and drag on the canvas to guide your snake.';
+            toggleControlsBtn.textContent = 'Show Arrows';
+        } else {
+            controlsHelper.textContent = 'Use the on-screen arrows to move.';
+            toggleControlsBtn.textContent = 'Use Touch-Drag';
+        }
+        mobileMenuDropdown.classList.add('hidden');
+    });
 
 
     // --- Controls ---
-
-    // Keyboard controls
     document.addEventListener('keydown', (e) => {
         let direction = null;
         switch (e.key) {
@@ -193,20 +214,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (direction) socket.emit('directionChange', direction);
     });
 
-    // Touch controls on canvas - Snake follows touch
     function handleCanvasTouch(event) {
+        // Only run this logic if touch-drag controls are enabled
+        if (!touchControlsEnabled) return;
+        
         event.preventDefault();
-        if (!lastGameState || !lastGameState.players[selfId] || !lastGameState.players[selfId].isAlive) {
-            return; // Don't do anything if not in the game
-        }
+        if (!lastGameState || !lastGameState.players[selfId] || !lastGameState.players[selfId].isAlive) return;
         
         const player = lastGameState.players[selfId];
         if (!player.body || player.body.length === 0) return;
 
         const head = player.body[0];
         const scale = canvas.width / GRID_SIZE;
-        
-        // Calculate the center of the snake's head in pixels
         const headPixelX = head.x * scale + scale / 2;
         const headPixelY = head.y * scale + scale / 2;
 
@@ -220,21 +239,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let newDirection = null;
         if (Math.abs(dx) > Math.abs(dy)) {
-            // Horizontal movement is more significant
-            newDirection = dx > 0 ? { x: 1, y: 0 } : { x: -1, y: 0 }; // Right or Left
+            newDirection = dx > 0 ? { x: 1, y: 0 } : { x: -1, y: 0 }; 
         } else {
-            // Vertical movement is more significant
-            newDirection = dy > 0 ? { x: 0, y: 1 } : { x: 0, y: -1 }; // Down or Up
+            newDirection = dy > 0 ? { x: 0, y: 1 } : { x: 0, y: -1 };
         }
         
-        // CHANGE: Added a client-side check to prevent sending invalid (reversing) direction changes.
-        // This makes the touch-drag controls feel much more responsive.
         const currentDirection = player.direction;
         if (player.body.length > 1) {
             if (newDirection.x !== 0 && currentDirection.x === -newDirection.x) return;
             if (newDirection.y !== 0 && currentDirection.y === -newDirection.y) return;
         }
-
 
         if (newDirection) {
             socket.emit('directionChange', newDirection);
@@ -243,6 +257,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     canvas.addEventListener('touchstart', handleCanvasTouch);
     canvas.addEventListener('touchmove', handleCanvasTouch);
+    
+    // D-Pad Controls
+    function handleDirection(dir) {
+        socket.emit('directionchange', dir);
+    }
+    
+    if (upBtn) upBtn.addEventListener('click', () => handleDirection({ x: 0, y: -1 }));
+    if (downBtn) downBtn.addEventListener('click', () => handleDirection({ x: 0, y: 1 }));
+    if (leftBtn) leftBtn.addEventListener('click', () => handleDirection({ x: -1, y: 0 }));
+    if (rightBtn) rightBtn.addEventListener('click', () => handleDirection({ x: 1, y: 0 }));
+
 
     // Update helper text for touch devices
     if ('ontouchstart' in window || navigator.maxTouchPoints) {

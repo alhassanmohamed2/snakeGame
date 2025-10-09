@@ -233,6 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     canvas.addEventListener('touchstart', handleCanvasTouch);
+    // CHANGE: Added the 'touchmove' event listener to allow for continuous direction changes while dragging a finger.
     canvas.addEventListener('touchmove', handleCanvasTouch);
 
     // Update helper text for touch devices

@@ -9,6 +9,10 @@ const io = new socketIo.Server(server);
 
 const PORT = process.env.PORT || 3000;
 
+// CHANGE: This line tells Express to trust headers from a proxy,
+// which is necessary to get the real IP address in a deployed environment.
+app.set('trust proxy', true);
+
 app.use(express.static('public'));
 app.use(express.json()); // Middleware to parse JSON bodies
 
@@ -144,8 +148,10 @@ function gameLoop() {
 }
 
 io.on('connection', (socket) => {
-    console.log('A user connected:', socket.id);
-    const ip = socket.handshake.address;
+    // CHANGE: This logic now prioritizes the 'x-forwarded-for' header to get the real IP.
+    const ip = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+    console.log(`A user connected from IP: ${ip}`);
+    
     const now = new Date().toISOString();
     db.get('SELECT * FROM players WHERE ip = ?', [ip], (err, row) => {
         if (err) return console.error("DB Error:", err.message);

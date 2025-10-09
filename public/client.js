@@ -260,7 +260,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // D-Pad Controls
     function handleDirection(dir) {
-        socket.emit('directionchange', dir);
+        // FIX: Corrected the typo from 'directionchange' to 'directionChange'
+        socket.emit('directionChange', dir);
     }
     
     if (upBtn) upBtn.addEventListener('click', () => handleDirection({ x: 0, y: -1 }));

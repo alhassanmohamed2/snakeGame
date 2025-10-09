@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let selfId = null;
     let GRID_SIZE = 30;
     let hasJoinedGame = false;
+    let lastGameState = null; // Store the last received game state
 
     // --- Connection Handling ---
     socket.on('connect', () => {
@@ -55,6 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Game State & Drawing ---
     socket.on('gameState', (state) => {
+        lastGameState = state; // Always update the last known state
         drawGame(state);
         updateUI(state);
     });
@@ -191,26 +193,37 @@ document.addEventListener('DOMContentLoaded', () => {
         if (direction) socket.emit('directionChange', direction);
     });
 
-    // Touch controls on canvas
+    // Touch controls on canvas - Snake follows touch
     function handleCanvasTouch(event) {
         event.preventDefault();
+        if (!lastGameState || !lastGameState.players[selfId] || !lastGameState.players[selfId].isAlive) {
+            return; // Don't do anything if not in the game
+        }
+        
+        const player = lastGameState.players[selfId];
+        if (!player.body || player.body.length === 0) return;
+
+        const head = player.body[0];
+        const scale = canvas.width / GRID_SIZE;
+        
+        // Calculate the center of the snake's head in pixels
+        const headPixelX = head.x * scale + scale / 2;
+        const headPixelY = head.y * scale + scale / 2;
+
         const rect = canvas.getBoundingClientRect();
         const touch = event.touches[0];
         const touchX = touch.clientX - rect.left;
         const touchY = touch.clientY - rect.top;
 
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
-
-        const dx = touchX - centerX;
-        const dy = touchY - centerY;
+        const dx = touchX - headPixelX;
+        const dy = touchY - headPixelY;
 
         let direction = null;
         if (Math.abs(dx) > Math.abs(dy)) {
-            // Horizontal movement
+            // Horizontal movement is more significant
             direction = dx > 0 ? { x: 1, y: 0 } : { x: -1, y: 0 }; // Right or Left
         } else {
-            // Vertical movement
+            // Vertical movement is more significant
             direction = dy > 0 ? { x: 0, y: 1 } : { x: 0, y: -1 }; // Down or Up
         }
 
@@ -220,10 +233,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     canvas.addEventListener('touchstart', handleCanvasTouch);
+    canvas.addEventListener('touchmove', handleCanvasTouch);
 
     // Update helper text for touch devices
     if ('ontouchstart' in window || navigator.maxTouchPoints) {
-        controlsHelper.textContent = 'Tap on the canvas to change direction.';
+        controlsHelper.textContent = 'Touch and drag on the canvas to guide your snake.';
     }
 });
 

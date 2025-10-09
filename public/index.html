@@ -2,113 +2,127 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>MultiSnake</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐍</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
+            overscroll-behavior: none; /* Prevents pull-to-refresh on mobile */
+            
         }
-        .dead {
+        canvas {
+            background-color: #1a202c; /* dark gray */
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            touch-action: none; /* Prevents scrolling/zooming gestures on the canvas */
+        }
+        .player-card.dead {
             opacity: 0.5;
             transform: scale(0.95);
         }
+        .modal {
+            background-color: rgba(0, 0, 0, 0.7);
+        }
     </style>
 </head>
-<body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
+<body class="bg-gray-900 text-white h-screen flex flex-col antialiased">
 
-    <!-- Main container -->
-    <div class="w-full max-w-7xl mx-auto flex-grow flex flex-col md:flex-row gap-6 p-4">
+    <!-- Main App Container -->
+    <div id="app-container" class="w-full h-full max-w-7xl mx-auto flex flex-col md:flex-row gap-6 p-4">
         
-        <!-- Game Canvas Area (Left side on desktop, top on mobile) -->
+        <!-- Game Canvas & Mobile Header -->
         <div class="flex-grow w-full flex flex-col items-center md:h-full">
-            <h1 class="text-3xl font-bold mb-2 text-cyan-400">MultiSnake</h1>
-            <p id="game-status" class="mb-0 text-gray-400 h-6">Connecting to server...</p> <!-- Adjusted margin -->
-            <!-- Canvas Container -->
-            <div class="relative w-full flex-grow flex items-center justify-center">
-                <canvas id="gameCanvas" class="aspect-square max-w-full max-h-full"></canvas>
-                <!-- Pause Overlay -->
-                <div id="pause-overlay" class="hidden absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-lg">
-                    <h2 class="text-5xl font-bold text-yellow-400">PAUSED</h2>
+            <div class="w-full flex justify-between items-center mb-2">
+                <h1 class="text-3xl font-bold text-cyan-400">MultiSnake</h1>
+                <!-- Mobile Menu Button -->
+                <div class="md:hidden relative">
+                    <button id="menu-toggle-btn" class="p-2 bg-gray-700 rounded-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+                        </svg>
+                    </button>
+                    <!-- Mobile Dropdown Menu -->
+                    <div id="mobile-menu-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-gray-800 rounded-lg shadow-xl z-30">
+                        <button id="start-respawn-btn-mobile" class="w-full text-left p-3 hover:bg-gray-600 rounded-t-lg">Start Game</button>
+                        <button id="players-modal-btn" class="w-full text-left p-3 hover:bg-gray-600">Players</button>
+                        <button id="toggle-controls-btn" class="w-full text-left p-3 hover:bg-gray-600">Show Arrows</button>
+                        <button id="pause-btn-mobile" class="w-full text-left p-3 hover:bg-gray-600 rounded-b-lg">Pause</button>
+                    </div>
                 </div>
             </div>
-            <p id="controls-helper" class="mt-2 text-sm text-gray-500">Use WASD or Arrow Keys to move.</p>
-        </div>
-
-        <!-- Player Info & Controls (Right side on desktop, bottom on mobile) -->
-        <div class="w-full md:w-80 bg-gray-800 p-4 rounded-lg shadow-xl flex-shrink-0 flex flex-col">
             
-            <!-- Desktop Layout -->
-            <div class="hidden md:flex flex-col h-full">
-                <h2 class="text-2xl font-bold border-b border-gray-700 pb-2 mb-4">Players</h2>
-                <div id="player-list-desktop" class="space-y-3 flex-grow overflow-y-auto">
-                    <!-- Player cards will be injected here -->
+            <p id="game-status" class="text-gray-400">Connecting to server...</p>
+            
+            <!-- Canvas container for sizing -->
+            <div class="relative w-full flex-grow flex items-center justify-center pt-2">
+                 <canvas id="gameCanvas" class="aspect-square max-h-full max-w-full"></canvas>
+                 <!-- Pause Overlay -->
+                <div id="pause-overlay" class="hidden absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
+                    <h2 class="text-5xl font-bold text-yellow-400 animate-pulse">PAUSED</h2>
                 </div>
-                <div class="mt-6 pt-4 border-t border-gray-700">
-                    <h3 class="text-lg font-semibold mb-2">Your Name</h3>
+            </div>
+           
+            <p id="controls-helper" class="mt-2 text-gray-500 text-sm text-center">Use WASD or Arrow Keys to move.</p>
+        </div>
+
+        <!-- Player Info & Controls (Desktop) -->
+        <div class="hidden md:flex w-full md:w-80 bg-gray-800 p-4 rounded-lg shadow-xl flex-shrink-0 flex-col">
+            <h2 class="text-2xl font-bold border-b border-gray-700 pb-2 mb-4">Players</h2>
+            <div id="player-list-desktop" class="space-y-3 flex-grow overflow-y-auto">
+                <!-- Player cards injected here -->
+            </div>
+            <div class="mt-4 pt-4 border-t border-gray-700 space-y-3">
+                <div>
+                    <h3 class="text-lg font-semibold mb-1">Your Name</h3>
                     <p id="your-name-desktop" class="text-sm bg-gray-700 p-2 rounded break-words text-green-400">Loading...</p>
-                    <button id="start-respawn-btn-desktop" class="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-500 p-3 mt-4 rounded-lg font-bold transition">Start Game</button>
-                    <button id="pause-btn-desktop" class="w-full bg-yellow-600 hover:bg-yellow-700 p-3 mt-2 rounded-lg font-bold transition" disabled>Pause</button>
                 </div>
-                <!-- CHANGE: Admin panel link moved here to prevent page overflow -->
-                <div class="w-full text-center pt-4">
-                    <a href="/admin" class="text-xs text-gray-600 hover:text-cyan-400 transition">Admin Panel</a>
-                </div>
-            </div>
-
-            <!-- Mobile Layout Container (the menu and d-pad are positioned relative to the screen, not this container) -->
-            <div class="md:hidden flex-grow">
-                <!-- This container is now just a placeholder for the mobile layout to balance the flexbox -->
+                <button id="start-respawn-btn-desktop" class="w-full bg-cyan-600 hover:bg-cyan-700 p-3 rounded-lg font-bold transition disabled:opacity-50">Start Game</button>
+                <button id="pause-btn-desktop" class="w-full bg-yellow-600 hover:bg-yellow-700 p-3 rounded-lg font-bold transition disabled:opacity-50">Pause</button>
             </div>
         </div>
     </div>
     
-    <!-- Mobile Menu -->
-    <div class="md:hidden fixed bottom-4 left-4 z-20">
-        <div class="relative">
-            <button id="menu-toggle-btn" class="bg-cyan-600 hover:bg-cyan-700 p-3 rounded-full font-bold shadow-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
-                </svg>
-            </button>
-            <div id="mobile-menu-dropdown" class="hidden absolute bottom-full mb-2 w-48 bg-gray-700 rounded-lg shadow-lg z-20">
-                <button id="start-respawn-btn-mobile" class="w-full text-left px-4 py-2 hover:bg-gray-600 rounded-t-lg">Start Game</button>
-                <button id="players-modal-btn" class="w-full text-left px-4 py-2 hover:bg-gray-600">Show Players</button>
-                <button id="pause-btn-mobile" class="w-full text-left px-4 py-2 hover:bg-gray-600">Pause</button>
-                <button id="toggle-controls-btn" class="w-full text-left px-4 py-2 hover:bg-gray-600 rounded-b-lg">Show Arrows</button>
-            </div>
-        </div>
-    </div>
-    
-    <!-- D-Pad for Mobile -->
-    <div id="d-pad-container" class="hidden md:hidden fixed bottom-4 right-4 grid grid-cols-3 grid-rows-3 gap-2 w-36 h-36 z-10">
-        <button id="up-btn" class="col-start-2 row-start-1 bg-gray-700/80 rounded-full flex items-center justify-center text-xl">▲</button>
-        <button id="left-btn" class="col-start-1 row-start-2 bg-gray-700/80 rounded-full flex items-center justify-center text-xl">◀</button>
-        <button id="right-btn" class="col-start-3 row-start-2 bg-gray-700/80 rounded-full flex items-center justify-center text-xl">▶</button>
-        <button id="down-btn" class="col-start-2 row-start-3 bg-gray-700/80 rounded-full flex items-center justify-center text-xl">▼</button>
-    </div>
-
-    <!-- Players Modal for Mobile -->
-    <div id="players-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-30 p-4">
-        <div class="bg-gray-800 rounded-lg w-full max-w-md max-h-[80vh] flex flex-col p-4">
-            <div class="flex justify-between items-center border-b border-gray-700 pb-2 mb-4">
+    <!-- Players Modal (Mobile) -->
+    <div id="players-modal" class="modal hidden fixed inset-0 z-40 flex items-center justify-center p-4">
+        <div class="bg-gray-800 w-full max-w-md rounded-lg shadow-xl flex flex-col max-h-full">
+            <div class="flex justify-between items-center p-4 border-b border-gray-700">
                 <h2 class="text-2xl font-bold">Players</h2>
-                <button id="close-modal-btn" class="text-2xl">&times;</button>
+                <button id="close-modal-btn" class="p-2">&times;</button>
             </div>
-            <div id="player-list-mobile" class="space-y-3 flex-grow overflow-y-auto">
-                <!-- Mobile player list injected here -->
+            <div id="player-list-mobile" class="space-y-3 p-4 overflow-y-auto">
+                <!-- Player cards injected here -->
             </div>
-            <div class="mt-6 pt-4 border-t border-gray-700">
-                <h3 class="text-lg font-semibold mb-2">Your Name</h3>
-                <p id="your-name-mobile" class="text-sm bg-gray-700 p-2 rounded break-words text-green-400">Loading...</p>
-            </div>
-             <!-- CHANGE: Admin panel link also added here for mobile access -->
-            <div class="w-full text-center pt-4">
-                <a href="/admin" class="text-xs text-gray-600 hover:text-cyan-400 transition">Admin Panel</a>
+            <div class="p-4 mt-auto border-t border-gray-700">
+                 <h3 class="text-lg font-semibold mb-1">Your Name</h3>
+                 <p id="your-name-mobile" class="text-sm bg-gray-700 p-2 rounded break-words text-green-400">Loading...</p>
             </div>
         </div>
     </div>
+
+    <!-- D-Pad for Mobile - Initially Hidden -->
+    <div id="d-pad-container" class="hidden md:hidden fixed bottom-4 right-4 grid grid-cols-3 grid-rows-3 gap-2 w-36 h-36 z-20">
+        <div class="col-start-2 row-start-1">
+            <button id="up-btn" class="w-full h-full bg-gray-700/70 rounded-lg text-white text-2xl active:bg-cyan-500/70">↑</button>
+        </div>
+        <div class="col-start-1 row-start-2">
+            <button id="left-btn" class="w-full h-full bg-gray-700/70 rounded-lg text-white text-2xl active:bg-cyan-500/70">←</button>
+        </div>
+        <div class="col-start-3 row-start-2">
+            <button id="right-btn" class="w-full h-full bg-gray-700/70 rounded-lg text-white text-2xl active:bg-cyan-500/70">→</button>
+        </div>
+        <div class="col-start-2 row-start-3">
+            <button id="down-btn" class="w-full h-full bg-gray-700/70 rounded-lg text-white text-2xl active:bg-cyan-500/70">↓</button>
+        </div>
+    </div>
+
+    <div class="text-center pb-2">
+        <a href="/admin" target="_blank" class="text-xs text-gray-600 hover:text-gray-400">Admin Panel</a>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
 </body>
 </html>
 

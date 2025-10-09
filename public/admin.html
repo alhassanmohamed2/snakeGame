@@ -36,8 +36,11 @@
         </div>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            const socket = io();
+
             const passwordPrompt = document.getElementById('password-prompt');
             const dataTable = document.getElementById('data-table');
             const passwordInput = document.getElementById('password-input');
@@ -45,46 +48,43 @@
             const statsBody = document.getElementById('stats-body');
             const errorMessage = document.getElementById('error-message');
 
-            const fetchData = async () => {
-                const password = passwordInput.value;
+            const authenticate = (password) => {
                 if (!password) {
                     errorMessage.textContent = 'Password cannot be empty.';
                     errorMessage.classList.remove('hidden');
                     return;
                 }
                 errorMessage.classList.add('hidden');
-
-                try {
-                    const response = await fetch('/admin-data', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ password: password })
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        displayData(data);
-                        passwordPrompt.classList.add('hidden');
-                        dataTable.classList.remove('hidden');
-                    } else {
-                        errorMessage.textContent = 'Incorrect password.';
-                        errorMessage.classList.remove('hidden');
-                    }
-                } catch (error) {
-                    errorMessage.textContent = 'An error occurred while fetching data.';
-                    errorMessage.classList.remove('hidden');
-                    console.error('Error fetching stats:', error);
-                }
+                // Trim whitespace from password before sending
+                socket.emit('adminAuth', password.trim());
             };
 
-            submitBtn.addEventListener('click', fetchData);
+            submitBtn.addEventListener('click', () => authenticate(passwordInput.value));
             passwordInput.addEventListener('keyup', (event) => {
                 if (event.key === 'Enter') {
-                    fetchData();
+                    authenticate(passwordInput.value);
                 }
             });
+
+            // Listen for successful authentication and real-time updates
+            socket.on('statsUpdated', (data) => {
+                // On success, save the password to local storage
+                localStorage.setItem('snakeAdminPassword', passwordInput.value.trim());
+                
+                // Switch to the data view
+                passwordPrompt.classList.add('hidden');
+                dataTable.classList.remove('hidden');
+                
+                displayData(data);
+            });
+            
+            socket.on('authFailed', () => {
+                errorMessage.textContent = 'Incorrect password.';
+                errorMessage.classList.remove('hidden');
+                // If auth fails, remove any incorrect saved password
+                localStorage.removeItem('snakeAdminPassword');
+            });
+
 
             function displayData(data) {
                 statsBody.innerHTML = '';
@@ -104,7 +104,15 @@
                     statsBody.appendChild(row);
                 });
             }
+
+            // On page load, check for a saved password and try to auto-login
+            const savedPassword = localStorage.getItem('snakeAdminPassword');
+            if (savedPassword) {
+                passwordInput.value = savedPassword;
+                authenticate(savedPassword);
+            }
         });
     </script>
 </body>
 </html>
+

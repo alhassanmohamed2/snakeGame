@@ -218,22 +218,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const dx = touchX - headPixelX;
         const dy = touchY - headPixelY;
 
-        let direction = null;
+        let newDirection = null;
         if (Math.abs(dx) > Math.abs(dy)) {
             // Horizontal movement is more significant
-            direction = dx > 0 ? { x: 1, y: 0 } : { x: -1, y: 0 }; // Right or Left
+            newDirection = dx > 0 ? { x: 1, y: 0 } : { x: -1, y: 0 }; // Right or Left
         } else {
             // Vertical movement is more significant
-            direction = dy > 0 ? { x: 0, y: 1 } : { x: 0, y: -1 }; // Down or Up
+            newDirection = dy > 0 ? { x: 0, y: 1 } : { x: 0, y: -1 }; // Down or Up
+        }
+        
+        // CHANGE: Added a client-side check to prevent sending invalid (reversing) direction changes.
+        // This makes the touch-drag controls feel much more responsive.
+        const currentDirection = player.direction;
+        if (player.body.length > 1) {
+            if (newDirection.x !== 0 && currentDirection.x === -newDirection.x) return;
+            if (newDirection.y !== 0 && currentDirection.y === -newDirection.y) return;
         }
 
-        if (direction) {
-            socket.emit('directionChange', direction);
+
+        if (newDirection) {
+            socket.emit('directionChange', newDirection);
         }
     }
 
     canvas.addEventListener('touchstart', handleCanvasTouch);
-    // CHANGE: Added the 'touchmove' event listener to allow for continuous direction changes while dragging a finger.
     canvas.addEventListener('touchmove', handleCanvasTouch);
 
     // Update helper text for touch devices

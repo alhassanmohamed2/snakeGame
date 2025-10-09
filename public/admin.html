@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-8">
+    <div class="container mx-auto">
+        <h1 class="text-3xl font-bold mb-6 text-cyan-400">Player Connection Stats</h1>
+
+        <!-- Password Prompt -->
+        <div id="password-prompt" class="bg-gray-800 p-6 rounded-lg max-w-sm mx-auto">
+            <h2 class="text-xl mb-4">Enter Admin Password</h2>
+            <input type="password" id="password-input" class="w-full bg-gray-700 p-2 rounded text-white" placeholder="Password...">
+            <button id="submit-password" class="w-full bg-cyan-600 hover:bg-cyan-700 p-3 mt-4 rounded-lg font-bold transition">View Stats</button>
+            <p id="error-message" class="text-red-500 mt-2 text-sm text-center hidden"></p>
+        </div>
+
+        <!-- Data Table -->
+        <div id="data-table" class="hidden overflow-x-auto">
+            <table class="min-w-full bg-gray-800 rounded-lg">
+                <thead class="bg-gray-700">
+                    <tr>
+                        <th class="p-3 text-left">IP Address</th>
+                        <th class="p-3 text-left">First Seen</th>
+                        <th class="p-3 text-left">Last Seen</th>
+                        <th class="p-3 text-left">Visit Count</th>
+                    </tr>
+                </thead>
+                <tbody id="stats-body">
+                    <!-- Data will be injected here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const passwordPrompt = document.getElementById('password-prompt');
+            const dataTable = document.getElementById('data-table');
+            const passwordInput = document.getElementById('password-input');
+            const submitBtn = document.getElementById('submit-password');
+            const statsBody = document.getElementById('stats-body');
+            const errorMessage = document.getElementById('error-message');
+
+            const fetchData = async () => {
+                const password = passwordInput.value;
+                if (!password) {
+                    errorMessage.textContent = 'Password cannot be empty.';
+                    errorMessage.classList.remove('hidden');
+                    return;
+                }
+                errorMessage.classList.add('hidden');
+
+                try {
+                    const response = await fetch('/admin-data', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ password: password })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        displayData(data);
+                        passwordPrompt.classList.add('hidden');
+                        dataTable.classList.remove('hidden');
+                    } else {
+                        errorMessage.textContent = 'Incorrect password.';
+                        errorMessage.classList.remove('hidden');
+                    }
+                } catch (error) {
+                    errorMessage.textContent = 'An error occurred while fetching data.';
+                    errorMessage.classList.remove('hidden');
+                    console.error('Error fetching stats:', error);
+                }
+            };
+
+            submitBtn.addEventListener('click', fetchData);
+            passwordInput.addEventListener('keyup', (event) => {
+                if (event.key === 'Enter') {
+                    fetchData();
+                }
+            });
+
+            function displayData(data) {
+                statsBody.innerHTML = '';
+                if (data.length === 0) {
+                    statsBody.innerHTML = '<tr><td colspan="4" class="text-center p-4 text-gray-400">No player data found.</td></tr>';
+                    return;
+                }
+                data.forEach(player => {
+                    const row = document.createElement('tr');
+                    row.className = 'border-b border-gray-700 hover:bg-gray-700/50';
+                    row.innerHTML = `
+                        <td class="p-3">${player.ip}</td>
+                        <td class="p-3">${new Date(player.first_seen).toLocaleString()}</td>
+                        <td class="p-3">${new Date(player.last_seen).toLocaleString()}</td>
+                        <td class="p-3 text-center">${player.visit_count}</td>
+                    `;
+                    statsBody.appendChild(row);
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,14 +1,15 @@
 {
-  "name": "multiplayer-snake-server",
+  "name": "snake-game-server",
   "version": "1.0.0",
-  "description": "Server for the multiplayer snake game",
+  "description": "Multiplayer Snake Game Server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "socket.io": "^4.7.5"
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "sqlite3": "^5.1.7"
   }
 }
 

@@ -133,6 +133,9 @@ function gameLoop(roomId) {
     const playerIds = Object.keys(room.players);
     for (const playerId of playerIds) {
         const player = room.players[playerId];
+        // FIX: Added a safety check to ensure the player object still exists before processing collisions.
+        // This prevents a server crash if a player disconnects mid-game-loop.
+        if (!player) continue; 
         if (!player.isAlive || player.isPaused) continue;
         const head = player.body[0];
         for (let i = 1; i < player.body.length; i++) {
@@ -145,7 +148,7 @@ function gameLoop(roomId) {
         for (const otherPlayerId of playerIds) {
             if (playerId === otherPlayerId) continue;
             const otherPlayer = room.players[otherPlayerId];
-            if (!otherPlayer.isAlive || otherPlayer.isPaused) continue;
+            if (!otherPlayer || !otherPlayer.isAlive || otherPlayer.isPaused) continue;
             for (let i = 0; i < otherPlayer.body.length; i++) {
                 if (head.x === otherPlayer.body[i].x && head.y === otherPlayer.body[i].y) {
                     player.isAlive = false;
@@ -189,6 +192,8 @@ io.on('connection', (socket) => {
     });
 
     socket.on('startGame', () => {
+        const room = rooms[socket.roomId];
+        if (!room) return;
         const player = room.players[socket.id];
         if (player && !player.isAlive) {
             player.body = [getSafeRandomPosition(room)];
@@ -200,6 +205,8 @@ io.on('connection', (socket) => {
         }
     });
     socket.on('directionChange', (newDirection) => {
+        const room = rooms[socket.roomId];
+        if (!room) return;
         const player = room.players[socket.id];
         if (player && player.isAlive && !player.isPaused) {
             if (player.body.length > 1) {
@@ -210,6 +217,8 @@ io.on('connection', (socket) => {
         }
     });
     socket.on('toggle-pause', () => {
+        const room = rooms[socket.roomId];
+        if (!room) return;
         const player = room.players[socket.id];
         if (player && player.isAlive) {
             player.isPaused = !player.isPaused;

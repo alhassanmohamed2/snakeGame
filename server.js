@@ -98,7 +98,6 @@ function gameLoop(roomId) {
     const room = rooms[roomId];
     if (!room) return;
 
-    // Allow players to change direction once per tick
     for (const playerId in room.players) {
         if (room.players[playerId]) {
             room.players[playerId].canChangeDirection = true;
@@ -160,6 +159,13 @@ function gameLoop(roomId) {
     io.to(roomId).emit('gameState', { players: room.players, food: room.food });
 }
 
+// --- ADMIN ROUTE ---
+// This tells the server how to handle requests for the /admin page.
+app.get('/admin', (req, res) => {
+    res.sendFile(__dirname + '/public/admin.html');
+});
+
+
 io.on('connection', (socket) => {
     const ip = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
     const now = new Date().toISOString();
@@ -220,7 +226,7 @@ io.on('connection', (socket) => {
                 }
             }
             player.direction = newDirection;
-            player.canChangeDirection = false; // Prevent further changes until the next tick
+            player.canChangeDirection = false;
         }
     });
     socket.on('toggle-pause', () => {

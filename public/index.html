@@ -57,8 +57,8 @@
             
             <p id="game-status" class="text-gray-400 h-6">Connecting to server...</p>
             
-            <!-- CHANGE: Removed flex-grow from this container on mobile to prevent it from taking up too much space -->
-            <div class="relative w-full flex items-center justify-center pt-2">
+            <!-- CHANGE: Applied flex-grow ONLY to the desktop view to fix the canvas sizing -->
+            <div class="relative w-full md:flex-grow flex items-center justify-center pt-2">
                  <canvas id="gameCanvas" class="aspect-square max-h-full max-w-full"></canvas>
                 <div id="pause-overlay" class="hidden absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
                     <h2 class="text-5xl font-bold text-yellow-400 animate-pulse">PAUSED</h2>

@@ -181,7 +181,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (keysPressed['a'] || keysPressed['ArrowLeft']) direction.x = -1;
         else if (keysPressed['d'] || keysPressed['ArrowRight']) direction.x = 1;
 
-        // Only send an update if a key is actually being pressed
         if (direction.x !== 0 || direction.y !== 0) {
             socket.emit('directionChange', direction);
         }
@@ -198,7 +197,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('keyup', (e) => {
         if (['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
             keysPressed[e.key] = false;
-            // CHANGE: No update is sent on keyup, so the snake keeps moving.
         }
     });
 
@@ -219,15 +217,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const touchY = touch.clientY - rect.top;
         const dx = touchX - headPixelX;
         const dy = touchY - headPixelY;
+        
+        // CHANGE: New logic to calculate 8-directional movement from touch angle.
+        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return; // Ignore taps near the center
+
+        const angle = Math.atan2(dy, dx);
+        const pi = Math.PI;
         let newDirection = null;
-        if (Math.abs(dx) > Math.abs(dy)) newDirection = dx > 0 ? { x: 1, y: 0 } : { x: -1, y: 0 };
-        else newDirection = dy > 0 ? { x: 0, y: 1 } : { x: 0, y: -1 };
-        const currentDirection = player.direction;
-        if (player.body.length > 1) {
-            if (newDirection.x !== 0 && currentDirection.x === -newDirection.x) return;
-            if (newDirection.y !== 0 && currentDirection.y === -newDirection.y) return;
+
+        if (angle > -pi / 8 && angle <= pi / 8) newDirection = { x: 1, y: 0 }; // Right
+        else if (angle > pi / 8 && angle <= 3 * pi / 8) newDirection = { x: 1, y: 1 }; // Down-Right
+        else if (angle > 3 * pi / 8 && angle <= 5 * pi / 8) newDirection = { x: 0, y: 1 }; // Down
+        else if (angle > 5 * pi / 8 && angle <= 7 * pi / 8) newDirection = { x: -1, y: 1 }; // Down-Left
+        else if (angle > 7 * pi / 8 || angle <= -7 * pi / 8) newDirection = { x: -1, y: 0 }; // Left
+        else if (angle > -7 * pi / 8 && angle <= -5 * pi / 8) newDirection = { x: -1, y: -1 }; // Up-Left
+        else if (angle > -5 * pi / 8 && angle <= -3 * pi / 8) newDirection = { x: 0, y: -1 }; // Up
+        else if (angle > -3 * pi / 8 && angle <= -pi / 8) newDirection = { x: 1, y: -1 }; // Up-Right
+
+        if (newDirection) {
+            socket.emit('directionChange', newDirection);
         }
-        if (newDirection) socket.emit('directionChange', newDirection);
     }
     canvas.addEventListener('touchstart', handleCanvasTouch);
     canvas.addEventListener('touchmove', handleCanvasTouch);

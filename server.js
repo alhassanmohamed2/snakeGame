@@ -192,7 +192,6 @@ io.on('connection', (socket) => {
         const player = room.players[socket.id];
         if (player && !player.isAlive) {
             player.body = [getSafeRandomPosition(room)];
-            // CHANGE: Assign a random starting direction
             const startDirections = [{x: 1, y: 0}, {x: -1, y: 0}, {x: 0, y: 1}, {x: 0, y: -1}];
             player.direction = startDirections[Math.floor(Math.random() * startDirections.length)];
             player.isAlive = true;
@@ -206,11 +205,14 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         const player = room.players[socket.id];
-        // CHANGE: Ignore requests to stop the snake
+        
         if (player && player.isAlive && !player.isPaused && (newDirection.x !== 0 || newDirection.y !== 0)) {
+            // CHANGE: New, more robust anti-reversal logic that works for diagonals.
             if (player.body.length > 1) {
-                if (newDirection.x !== 0 && player.direction.x === -newDirection.x) return;
-                if (newDirection.y !== 0 && player.direction.y === -newDirection.y) return;
+                // A move is a reversal if the new direction is the exact opposite of the current one.
+                if (newDirection.x === -player.direction.x && newDirection.y === -player.direction.y) {
+                    return;
+                }
             }
             player.direction = newDirection;
         }

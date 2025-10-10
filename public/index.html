@@ -28,6 +28,7 @@
         #joystick-container {
             position: fixed;
             bottom: 20px;
+            /* CHANGE: Centered the joystick */
             left: 50%;
             transform: translateX(-50%);
             width: 150px;
@@ -41,7 +42,8 @@
     <div id="app-container" class="w-full h-full max-w-7xl mx-auto flex flex-col md:flex-row gap-6 p-4">
         
         <div class="flex-grow w-full flex flex-col items-center md:h-full">
-            <div class="w-full flex justify-between items-center mb-2">
+            <!-- CHANGE: This container now centers the title on desktop (md:justify-center) -->
+            <div class="w-full flex justify-between md:justify-center items-center mb-2">
                 <h1 class="text-3xl font-bold text-cyan-400">Multiplayer Snake</h1>
                 <div class="md:hidden relative">
                     <button id="menu-toggle-btn" class="p-2 bg-gray-700 rounded-lg">
@@ -58,7 +60,6 @@
             
             <p id="game-status" class="text-gray-400 h-6">Connecting to server...</p>
             
-            <!-- CHANGE: Applied flex-grow ONLY to the desktop view to fix the canvas sizing -->
             <div class="relative w-full md:flex-grow flex items-center justify-center pt-2">
                  <canvas id="gameCanvas" class="aspect-square max-h-full max-w-full"></canvas>
                 <div id="pause-overlay" class="hidden absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">

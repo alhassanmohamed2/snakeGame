@@ -75,12 +75,58 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#f56565';
         if(food) food.forEach(f => ctx.fillRect(f.x * scale, f.y * scale, scale, scale));
+        
         if(players) {
             for (const id in players) {
                 const player = players[id];
-                if (!player.isAlive || player.isPaused || !player.body) continue;
-                ctx.fillStyle = id === selfId ? '#48bb78' : '#63b3ed';
-                player.body.forEach(segment => ctx.fillRect(segment.x * scale, segment.y * scale, scale, scale));
+                if (!player.isAlive || player.isPaused || !player.body || player.body.length === 0) continue;
+                
+                const ownSnake = { body: '#48bb78', head: '#68D391', tail: '#38A169' };
+                const otherSnake = { body: '#63b3ed', head: '#90CDF4', tail: '#4299E1' };
+                const colors = id === selfId ? ownSnake : otherSnake;
+
+                player.body.forEach((segment, index) => {
+                    const sx = segment.x * scale;
+                    const sy = segment.y * scale;
+
+                    if (index === 0) { // --- This is the new head drawing logic ---
+                        ctx.fillStyle = colors.head;
+                        const dir = player.direction;
+                        // Default to a square if the snake hasn't moved yet
+                        if (dir.x === 0 && dir.y === 0) {
+                            ctx.fillRect(sx, sy, scale, scale);
+                            return;
+                        }
+                        
+                        // Draw a triangle pointing in the snake's direction
+                        const cx = sx + scale / 2;
+                        const cy = sy + scale / 2;
+
+                        // Normalize the direction vector for consistent triangle size
+                        const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y) || 1;
+                        const normDir = { x: dir.x / len, y: dir.y / len };
+
+                        // Points of the triangle
+                        const p1 = { x: cx + normDir.x * scale / 2, y: cy + normDir.y * scale / 2 }; // Tip
+                        const p2 = { x: cx - normDir.x * scale / 2 + normDir.y * scale / 2, y: cy - normDir.y * scale / 2 - normDir.x * scale / 2 }; // Back left
+                        const p3 = { x: cx - normDir.x * scale / 2 - normDir.y * scale / 2, y: cy - normDir.y * scale / 2 + normDir.x * scale / 2 }; // Back right
+
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.lineTo(p3.x, p3.y);
+                        ctx.closePath();
+                        ctx.fill();
+
+                    } else if (index === player.body.length - 1 && player.body.length > 1) { // --- This is the new tail drawing logic ---
+                        ctx.fillStyle = colors.tail;
+                        // Draw a smaller, inset square for the tail
+                        ctx.fillRect(sx + scale * 0.15, sy + scale * 0.15, scale * 0.7, scale * 0.7);
+                    } else { // --- This is the body drawing logic ---
+                        ctx.fillStyle = colors.body;
+                        ctx.fillRect(sx, sy, scale, scale);
+                    }
+                });
             }
         }
     }
@@ -137,27 +183,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Controls ---
-    
-    // CHANGE: New keyboard control system to handle multiple key presses for diagonal movement.
     const keysPressed = {};
     let lastSentDirection = null;
 
     function updateDirectionFromKeys() {
         const direction = { x: 0, y: 0 };
-
-        if (keysPressed['w'] || keysPressed['ArrowUp']) {
-            direction.y = -1;
-        } else if (keysPressed['s'] || keysPressed['ArrowDown']) {
-            direction.y = 1;
-        }
-
-        if (keysPressed['a'] || keysPressed['ArrowLeft']) {
-            direction.x = -1;
-        } else if (keysPressed['d'] || keysPressed['ArrowRight']) {
-            direction.x = 1;
-        }
-
-        // Only send an update to the server if the direction has actually changed.
+        if (keysPressed['w'] || keysPressed['ArrowUp']) direction.y = -1;
+        else if (keysPressed['s'] || keysPressed['ArrowDown']) direction.y = 1;
+        if (keysPressed['a'] || keysPressed['ArrowLeft']) direction.x = -1;
+        else if (keysPressed['d'] || keysPressed['ArrowRight']) direction.x = 1;
         if (JSON.stringify(direction) !== JSON.stringify(lastSentDirection)) {
             socket.emit('directionChange', direction);
             lastSentDirection = direction;
@@ -166,7 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('keydown', (e) => {
         if (['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-            if (keysPressed[e.key]) return; // Prevent repeated events for a held key
+            if (keysPressed[e.key]) return;
             keysPressed[e.key] = true;
             updateDirectionFromKeys();
         }
@@ -178,7 +212,6 @@ document.addEventListener('DOMContentLoaded', () => {
             updateDirectionFromKeys();
         }
     });
-
 
     function handleCanvasTouch(event) {
         if (!touchDragEnabled) return;

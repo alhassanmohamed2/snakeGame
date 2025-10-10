@@ -133,8 +133,6 @@ function gameLoop(roomId) {
     const playerIds = Object.keys(room.players);
     for (const playerId of playerIds) {
         const player = room.players[playerId];
-        // FIX: Added a safety check to ensure the player object still exists before processing collisions.
-        // This prevents a server crash if a player disconnects mid-game-loop.
         if (!player) continue; 
         if (!player.isAlive || player.isPaused) continue;
         const head = player.body[0];
@@ -193,7 +191,7 @@ io.on('connection', (socket) => {
 
     socket.on('startGame', () => {
         const room = rooms[socket.roomId];
-        if (!room) return;
+        if (!room || !room.players[socket.id]) return; // Safety Check
         const player = room.players[socket.id];
         if (player && !player.isAlive) {
             player.body = [getSafeRandomPosition(room)];
@@ -206,7 +204,7 @@ io.on('connection', (socket) => {
     });
     socket.on('directionChange', (newDirection) => {
         const room = rooms[socket.roomId];
-        if (!room) return;
+        if (!room || !room.players[socket.id]) return; // Safety Check
         const player = room.players[socket.id];
         if (player && player.isAlive && !player.isPaused) {
             if (player.body.length > 1) {
@@ -218,7 +216,7 @@ io.on('connection', (socket) => {
     });
     socket.on('toggle-pause', () => {
         const room = rooms[socket.roomId];
-        if (!room) return;
+        if (!room || !room.players[socket.id]) return; // Safety Check
         const player = room.players[socket.id];
         if (player && player.isAlive) {
             player.isPaused = !player.isPaused;
@@ -228,7 +226,7 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('A user disconnected:', socket.id);
         const roomId = socket.roomId;
-        if (roomId && rooms[roomId]) {
+        if (roomId && rooms[roomId] && rooms[roomId].players[socket.id]) {
             const room = rooms[roomId];
             delete room.players[socket.id];
             addFood(room);

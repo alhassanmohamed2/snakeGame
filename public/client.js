@@ -89,40 +89,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     const sx = segment.x * scale;
                     const sy = segment.y * scale;
 
-                    if (index === 0) { // --- This is the new head drawing logic ---
+                    if (index === 0) {
                         ctx.fillStyle = colors.head;
                         const dir = player.direction;
-                        // Default to a square if the snake hasn't moved yet
-                        if (dir.x === 0 && dir.y === 0) {
-                            ctx.fillRect(sx, sy, scale, scale);
-                            return;
-                        }
                         
-                        // Draw a triangle pointing in the snake's direction
-                        const cx = sx + scale / 2;
-                        const cy = sy + scale / 2;
-
-                        // Normalize the direction vector for consistent triangle size
-                        const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y) || 1;
-                        const normDir = { x: dir.x / len, y: dir.y / len };
-
-                        // Points of the triangle
-                        const p1 = { x: cx + normDir.x * scale / 2, y: cy + normDir.y * scale / 2 }; // Tip
-                        const p2 = { x: cx - normDir.x * scale / 2 + normDir.y * scale / 2, y: cy - normDir.y * scale / 2 - normDir.x * scale / 2 }; // Back left
-                        const p3 = { x: cx - normDir.x * scale / 2 - normDir.y * scale / 2, y: cy - normDir.y * scale / 2 + normDir.x * scale / 2 }; // Back right
+                        ctx.save();
+                        ctx.translate(sx + scale / 2, sy + scale / 2);
+                        
+                        const angle = Math.atan2(dir.y, dir.x);
+                        ctx.rotate(angle);
 
                         ctx.beginPath();
-                        ctx.moveTo(p1.x, p1.y);
-                        ctx.lineTo(p2.x, p2.y);
-                        ctx.lineTo(p3.x, p3.y);
+                        ctx.moveTo(scale / 2, 0); 
+                        ctx.lineTo(-scale / 2, -scale / 2.5);
+                        ctx.lineTo(-scale / 2, scale / 2.5);
                         ctx.closePath();
                         ctx.fill();
+                        
+                        ctx.restore();
 
-                    } else if (index === player.body.length - 1 && player.body.length > 1) { // --- This is the new tail drawing logic ---
+                    } else if (index === player.body.length - 1 && player.body.length > 1) {
                         ctx.fillStyle = colors.tail;
-                        // Draw a smaller, inset square for the tail
                         ctx.fillRect(sx + scale * 0.15, sy + scale * 0.15, scale * 0.7, scale * 0.7);
-                    } else { // --- This is the body drawing logic ---
+                    } else {
                         ctx.fillStyle = colors.body;
                         ctx.fillRect(sx, sy, scale, scale);
                     }
@@ -184,7 +173,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Controls ---
     const keysPressed = {};
-    let lastSentDirection = null;
 
     function updateDirectionFromKeys() {
         const direction = { x: 0, y: 0 };
@@ -192,15 +180,16 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (keysPressed['s'] || keysPressed['ArrowDown']) direction.y = 1;
         if (keysPressed['a'] || keysPressed['ArrowLeft']) direction.x = -1;
         else if (keysPressed['d'] || keysPressed['ArrowRight']) direction.x = 1;
-        if (JSON.stringify(direction) !== JSON.stringify(lastSentDirection)) {
+
+        // Only send an update if a key is actually being pressed
+        if (direction.x !== 0 || direction.y !== 0) {
             socket.emit('directionChange', direction);
-            lastSentDirection = direction;
         }
     }
 
     document.addEventListener('keydown', (e) => {
         if (['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-            if (keysPressed[e.key]) return;
+            if (keysPressed[e.key]) return; 
             keysPressed[e.key] = true;
             updateDirectionFromKeys();
         }
@@ -209,9 +198,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('keyup', (e) => {
         if (['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
             keysPressed[e.key] = false;
-            updateDirectionFromKeys();
+            // CHANGE: No update is sent on keyup, so the snake keeps moving.
         }
     });
+
 
     function handleCanvasTouch(event) {
         if (!touchDragEnabled) return;

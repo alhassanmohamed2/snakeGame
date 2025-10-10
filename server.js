@@ -167,7 +167,7 @@ io.on('connection', (socket) => {
     socket.roomId = roomId;
 
     const room = rooms[roomId];
-    if (!room) { // Safety check for race condition
+    if (!room) {
         socket.disconnect();
         return;
     }
@@ -192,19 +192,22 @@ io.on('connection', (socket) => {
         const player = room.players[socket.id];
         if (player && !player.isAlive) {
             player.body = [getSafeRandomPosition(room)];
-            player.direction = { x: 0, y: 0 };
+            // CHANGE: Assign a random starting direction
+            const startDirections = [{x: 1, y: 0}, {x: -1, y: 0}, {x: 0, y: 1}, {x: 0, y: -1}];
+            player.direction = startDirections[Math.floor(Math.random() * startDirections.length)];
             player.isAlive = true;
             player.score = 0;
             player.spawnProtection = 2;
             player.isPaused = false;
-            addFood(room); // Add food for the new player
+            addFood(room);
         }
     });
     socket.on('directionChange', (newDirection) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         const player = room.players[socket.id];
-        if (player && player.isAlive && !player.isPaused) {
+        // CHANGE: Ignore requests to stop the snake
+        if (player && player.isAlive && !player.isPaused && (newDirection.x !== 0 || newDirection.y !== 0)) {
             if (player.body.length > 1) {
                 if (newDirection.x !== 0 && player.direction.x === -newDirection.x) return;
                 if (newDirection.y !== 0 && player.direction.y === -newDirection.y) return;
@@ -226,7 +229,7 @@ io.on('connection', (socket) => {
         const roomId = socket.roomId;
         if (roomId && rooms[roomId] && rooms[roomId].players[socket.id]) {
             delete rooms[roomId].players[socket.id];
-            const room = rooms[roomId]; // re-fetch room
+            const room = rooms[roomId];
             addFood(room);
             if (Object.keys(room.players).length === 0) {
                 clearInterval(room.gameInterval);

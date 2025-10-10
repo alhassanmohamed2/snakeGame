@@ -137,16 +137,48 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Controls ---
-    document.addEventListener('keydown', (e) => {
-        let direction = null;
-        switch (e.key) {
-            case 'w': case 'ArrowUp': direction = { x: 0, y: -1 }; break;
-            case 's': case 'ArrowDown': direction = { x: 0, y: 1 }; break;
-            case 'a': case 'ArrowLeft': direction = { x: -1, y: 0 }; break;
-            case 'd': case 'ArrowRight': direction = { x: 1, y: 0 }; break;
+    
+    // CHANGE: New keyboard control system to handle multiple key presses for diagonal movement.
+    const keysPressed = {};
+    let lastSentDirection = null;
+
+    function updateDirectionFromKeys() {
+        const direction = { x: 0, y: 0 };
+
+        if (keysPressed['w'] || keysPressed['ArrowUp']) {
+            direction.y = -1;
+        } else if (keysPressed['s'] || keysPressed['ArrowDown']) {
+            direction.y = 1;
         }
-        if (direction) socket.emit('directionChange', direction);
+
+        if (keysPressed['a'] || keysPressed['ArrowLeft']) {
+            direction.x = -1;
+        } else if (keysPressed['d'] || keysPressed['ArrowRight']) {
+            direction.x = 1;
+        }
+
+        // Only send an update to the server if the direction has actually changed.
+        if (JSON.stringify(direction) !== JSON.stringify(lastSentDirection)) {
+            socket.emit('directionChange', direction);
+            lastSentDirection = direction;
+        }
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+            if (keysPressed[e.key]) return; // Prevent repeated events for a held key
+            keysPressed[e.key] = true;
+            updateDirectionFromKeys();
+        }
     });
+
+    document.addEventListener('keyup', (e) => {
+        if (['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+            keysPressed[e.key] = false;
+            updateDirectionFromKeys();
+        }
+    });
+
 
     function handleCanvasTouch(event) {
         if (!touchDragEnabled) return;
@@ -187,13 +219,17 @@ document.addEventListener('DOMContentLoaded', () => {
             color: 'cyan',
             size: 150
         });
-        joystick.on('dir:up dir:down dir:left dir:right', (evt, data) => {
+        joystick.on('dir:up dir:down dir:left dir:right dir:up-left dir:up-right dir:down-left dir:down-right', (evt, data) => {
             let direction = null;
             switch(data.direction.angle) {
                 case 'up': direction = { x: 0, y: -1 }; break;
                 case 'down': direction = { x: 0, y: 1 }; break;
                 case 'left': direction = { x: -1, y: 0 }; break;
                 case 'right': direction = { x: 1, y: 0 }; break;
+                case 'up-left': direction = { x: -1, y: -1 }; break;
+                case 'up-right': direction = { x: 1, y: -1 }; break;
+                case 'down-left': direction = { x: -1, y: 1 }; break;
+                case 'down-right': direction = { x: 1, y: 1 }; break;
             }
             if (direction) socket.emit('directionChange', direction);
         });

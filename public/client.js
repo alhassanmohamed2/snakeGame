@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const menuToggleBtn = document.getElementById('menu-toggle-btn');
     const mobileMenuDropdown = document.getElementById('mobile-menu-dropdown');
     
-    // Players Modal (Mobile)
+    // Players Modal
     const playersModal = document.getElementById('players-modal');
     const playersModalBtn = document.getElementById('players-modal-btn');
     const closeModalBtn = document.getElementById('close-modal-btn');
@@ -32,35 +32,31 @@ document.addEventListener('DOMContentLoaded', () => {
     // Pause Overlay
     const pauseOverlay = document.getElementById('pause-overlay');
 
-    // D-Pad Elements
-    const dPadContainer = document.getElementById('d-pad-container');
-    const upBtn = document.getElementById('up-btn');
-    const downBtn = document.getElementById('down-btn');
-    const leftBtn = document.getElementById('left-btn');
-    const rightBtn = document.getElementById('right-btn');
+    // Joystick Container
+    const joystickContainer = document.getElementById('joystick-container');
+    let joystick = null;
 
     // --- Client State ---
     let selfId = null;
     let GRID_SIZE = 30;
     let hasJoinedGame = false;
     let lastGameState = null; 
-    let touchControlsEnabled = true; // Touch-drag is the default on mobile
+    let touchDragEnabled = true;
 
     // --- Connection Handling ---
     socket.on('connect', () => {
-        gameStatus.textContent = 'Connected! Press Start to join.';
-        gameStatus.classList.remove('text-red-500');
+        gameStatus.textContent = 'Finding a game...';
     });
 
     socket.on('connect_error', () => {
         gameStatus.textContent = 'Connection failed. Please refresh.';
-        gameStatus.classList.add('text-red-500');
     });
 
-    socket.on('init', ({ id, name }) => {
+    socket.on('init', ({ id, name, roomId }) => {
         selfId = id;
         yourNameDesktop.textContent = name;
         yourNameMobile.textContent = name;
+        gameStatus.textContent = `Connected to Room: ${roomId.split('_')[1]}`;
     });
 
     // --- Game State & Drawing ---
@@ -76,7 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.width = size;
         canvas.height = size;
     }
-    
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
@@ -84,13 +79,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!canvas || !state) return;
         const { players, food } = state;
         const scale = canvas.width / GRID_SIZE;
-
         ctx.fillStyle = '#1a202c';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-
         ctx.fillStyle = '#f56565';
         food.forEach(f => ctx.fillRect(f.x * scale, f.y * scale, scale, scale));
-
         for (const id in players) {
             const player = players[id];
             if (!player.isAlive || player.isPaused || !player.body) continue;
@@ -103,10 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!playerListDesktop || !state) return;
         const { players } = state;
         const sortedPlayers = Object.values(players).sort((a, b) => b.score - a.score);
-
         playerListDesktop.innerHTML = '';
         playerListMobile.innerHTML = '';
-
         sortedPlayers.forEach(player => {
             const card = document.createElement('div');
             let pausedIndicator = player.isPaused ? '<span class="text-xs text-yellow-400 ml-2">(Paused)</span>' : '';
@@ -115,30 +105,21 @@ document.addEventListener('DOMContentLoaded', () => {
             playerListDesktop.appendChild(card.cloneNode(true));
             playerListMobile.appendChild(card);
         });
-        
         const me = players[selfId];
         if (!me) return;
-
         const isAlive = me.isAlive;
         const isPaused = me.isPaused;
-        
         let startButtonText = 'Start Game';
-        if (isAlive) {
-            startButtonText = 'Playing...';
-        } else if (hasJoinedGame) {
-            startButtonText = 'Respawn';
-        }
-        
+        if (isAlive) startButtonText = 'Playing...';
+        else if (hasJoinedGame) startButtonText = 'Respawn';
         startBtnDesktop.textContent = startButtonText;
         startBtnDesktop.disabled = isAlive;
         startBtnMobile.textContent = startButtonText;
         startBtnMobile.disabled = isAlive;
-        
         pauseBtnDesktop.textContent = isPaused ? 'Resume' : 'Pause';
         pauseBtnMobile.textContent = isPaused ? 'Resume' : 'Pause';
         pauseBtnDesktop.disabled = !isAlive;
         pauseBtnMobile.disabled = !isAlive;
-        
         pauseOverlay.classList.toggle('hidden', !isPaused);
     }
 
@@ -147,61 +128,30 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.emit('startGame');
         hasJoinedGame = true;
     }
-    
     function handlePause() {
         socket.emit('toggle-pause');
     }
-    
     startBtnDesktop.addEventListener('click', handleStart);
     pauseBtnDesktop.addEventListener('click', handlePause);
-    
-    // Modal Listeners
     closeModalBtn.addEventListener('click', () => playersModal.classList.add('hidden'));
 
-    // Mobile Dropdown Menu Logic
+    // Mobile Menu Logic
     if (menuToggleBtn) {
-        menuToggleBtn.addEventListener('click', (event) => {
-            event.stopPropagation();
+        menuToggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
             mobileMenuDropdown.classList.toggle('hidden');
         });
-
-        document.addEventListener('click', (event) => {
-            if (!mobileMenuDropdown.classList.contains('hidden') && !mobileMenuDropdown.contains(event.target) && event.target !== menuToggleBtn) {
+        document.addEventListener('click', (e) => {
+            if (!mobileMenuDropdown.classList.contains('hidden') && !mobileMenuDropdown.contains(e.target)) {
                 mobileMenuDropdown.classList.add('hidden');
             }
         });
     }
 
-    startBtnMobile.addEventListener('click', () => {
-        handleStart();
-        mobileMenuDropdown.classList.add('hidden');
-    });
-
-    playersModalBtn.addEventListener('click', () => {
-        playersModal.classList.remove('hidden');
-        mobileMenuDropdown.classList.add('hidden');
-    });
-
-    pauseBtnMobile.addEventListener('click', () => {
-        handlePause();
-        mobileMenuDropdown.classList.add('hidden');
-    });
+    startBtnMobile.addEventListener('click', () => { handleStart(); mobileMenuDropdown.classList.add('hidden'); });
+    playersModalBtn.addEventListener('click', () => { playersModal.classList.remove('hidden'); mobileMenuDropdown.classList.add('hidden'); });
+    pauseBtnMobile.addEventListener('click', () => { handlePause(); mobileMenuDropdown.classList.add('hidden'); });
     
-    toggleControlsBtn.addEventListener('click', () => {
-        touchControlsEnabled = !touchControlsEnabled;
-        dPadContainer.classList.toggle('hidden');
-        
-        if (touchControlsEnabled) {
-            controlsHelper.textContent = 'Touch and drag on the canvas to guide your snake.';
-            toggleControlsBtn.textContent = 'Show Arrows';
-        } else {
-            controlsHelper.textContent = 'Use the on-screen arrows to move.';
-            toggleControlsBtn.textContent = 'Use Touch-Drag';
-        }
-        mobileMenuDropdown.classList.add('hidden');
-    });
-
-
     // --- Controls ---
     document.addEventListener('keydown', (e) => {
         let direction = null;
@@ -215,62 +165,79 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function handleCanvasTouch(event) {
-        // Only run this logic if touch-drag controls are enabled
-        if (!touchControlsEnabled) return;
-        
+        if (!touchDragEnabled) return;
         event.preventDefault();
         if (!lastGameState || !lastGameState.players[selfId] || !lastGameState.players[selfId].isAlive) return;
-        
         const player = lastGameState.players[selfId];
         if (!player.body || player.body.length === 0) return;
-
         const head = player.body[0];
         const scale = canvas.width / GRID_SIZE;
         const headPixelX = head.x * scale + scale / 2;
         const headPixelY = head.y * scale + scale / 2;
-
         const rect = canvas.getBoundingClientRect();
         const touch = event.touches[0];
         const touchX = touch.clientX - rect.left;
         const touchY = touch.clientY - rect.top;
-
         const dx = touchX - headPixelX;
         const dy = touchY - headPixelY;
-
         let newDirection = null;
-        if (Math.abs(dx) > Math.abs(dy)) {
-            newDirection = dx > 0 ? { x: 1, y: 0 } : { x: -1, y: 0 }; 
-        } else {
-            newDirection = dy > 0 ? { x: 0, y: 1 } : { x: 0, y: -1 };
-        }
-        
+        if (Math.abs(dx) > Math.abs(dy)) newDirection = dx > 0 ? { x: 1, y: 0 } : { x: -1, y: 0 };
+        else newDirection = dy > 0 ? { x: 0, y: 1 } : { x: 0, y: -1 };
         const currentDirection = player.direction;
         if (player.body.length > 1) {
             if (newDirection.x !== 0 && currentDirection.x === -newDirection.x) return;
             if (newDirection.y !== 0 && currentDirection.y === -newDirection.y) return;
         }
-
-        if (newDirection) {
-            socket.emit('directionChange', newDirection);
-        }
+        if (newDirection) socket.emit('directionChange', newDirection);
     }
-
     canvas.addEventListener('touchstart', handleCanvasTouch);
     canvas.addEventListener('touchmove', handleCanvasTouch);
-    
-    // D-Pad Controls
-    function handleDirection(dir) {
-        // FIX: Corrected the typo from 'directionchange' to 'directionChange'
-        socket.emit('directionChange', dir);
+
+    // --- Control Toggling & Joystick ---
+    function createJoystick() {
+        if (joystick) joystick.destroy();
+        joystickContainer.classList.remove('hidden');
+        joystick = nipplejs.create({
+            zone: joystickContainer,
+            mode: 'static',
+            position: { right: '75px', bottom: '75px' },
+            color: 'cyan'
+        });
+        joystick.on('dir:up dir:down dir:left dir:right', (evt, data) => {
+            let direction = null;
+            switch(data.direction.angle) {
+                case 'up': direction = { x: 0, y: -1 }; break;
+                case 'down': direction = { x: 0, y: 1 }; break;
+                case 'left': direction = { x: -1, y: 0 }; break;
+                case 'right': direction = { x: 1, y: 0 }; break;
+            }
+            if (direction) socket.emit('directionChange', direction);
+        });
     }
-    
-    if (upBtn) upBtn.addEventListener('click', () => handleDirection({ x: 0, y: -1 }));
-    if (downBtn) downBtn.addEventListener('click', () => handleDirection({ x: 0, y: 1 }));
-    if (leftBtn) leftBtn.addEventListener('click', () => handleDirection({ x: -1, y: 0 }));
-    if (rightBtn) rightBtn.addEventListener('click', () => handleDirection({ x: 1, y: 0 }));
 
+    function destroyJoystick() {
+        if (joystick) {
+            joystick.destroy();
+            joystick = null;
+        }
+        joystickContainer.classList.add('hidden');
+    }
 
-    // Update helper text for touch devices
+    toggleControlsBtn.addEventListener('click', () => {
+        touchDragEnabled = !touchDragEnabled;
+        if (touchDragEnabled) {
+            destroyJoystick();
+            controlsHelper.textContent = 'Touch and drag on the canvas to guide your snake.';
+            toggleControlsBtn.textContent = 'Use Joystick';
+        } else {
+            createJoystick();
+            controlsHelper.textContent = 'Use the joystick to move.';
+            toggleControlsBtn.textContent = 'Use Touch-Drag';
+        }
+        mobileMenuDropdown.classList.add('hidden');
+    });
+
+    // Initial setup for touch devices
     if ('ontouchstart' in window || navigator.maxTouchPoints) {
         controlsHelper.textContent = 'Touch and drag on the canvas to guide your snake.';
     }

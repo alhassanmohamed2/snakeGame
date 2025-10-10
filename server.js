@@ -8,43 +8,28 @@ const server = http.createServer(app);
 const io = new socketIo.Server(server);
 
 const PORT = process.env.PORT || 3000;
+const MAX_PLAYERS_PER_ROOM = 4;
 
 app.set('trust proxy', true);
-
 app.use(express.static('public'));
-app.use(express.json());
 
 // --- Database Setup ---
 const db = new sqlite3.Database('./stats.db', (err) => {
-    if (err) {
-        console.error('Database connection error:', err.message);
-    }
-    console.log('Connected to the stats.db SQLite database.');
+    if (err) console.error('Database connection error:', err.message);
+    else console.log('Connected to the stats.db SQLite database.');
 });
+db.run('CREATE TABLE IF NOT EXISTS players (ip TEXT PRIMARY KEY, first_seen TEXT, last_seen TEXT, visit_count INTEGER)');
 
-db.run('CREATE TABLE IF NOT EXISTS players (ip TEXT PRIMARY KEY, first_seen TEXT, last_seen TEXT, visit_count INTEGER)', (err) => {
-    if (err) {
-        console.error("Error creating players table:", err);
-    }
-});
-
-// Helper function to broadcast stats to admins
 function broadcastStats() {
     db.all('SELECT * FROM players ORDER BY last_seen DESC', [], (err, rows) => {
-        if (err) {
-            console.error('Error fetching stats for broadcast:', err.message);
-            return;
-        }
-        io.to('admins').emit('statsUpdated', rows);
+        if (!err) io.to('admins').emit('statsUpdated', rows);
     });
 }
 
-// --- Game State ---
+// --- Game State Management ---
 const GRID_SIZE = 30;
-let players = {};
-let food = [];
-let gameInterval = null;
 const TICK_RATE = 120;
+let rooms = {}; // Object to hold all game rooms
 
 // --- Player Name Generation ---
 const ADJECTIVES = ["Agile", "Brave", "Clever", "Daring", "Eager", "Fast", "Glowing", "Happy", "Iron", "Jolly", "Keen", "Lucky"];
@@ -57,18 +42,39 @@ function generateRandomName() {
     return `${adj} ${animal} ${num}`;
 }
 
-// --- Game Logic ---
-function getSafeRandomPosition() {
+// --- Room & Game Logic ---
+function createRoom(roomId) {
+    rooms[roomId] = {
+        id: roomId,
+        players: {},
+        food: [],
+        gameInterval: null
+    };
+    console.log(`Room created: ${roomId}`);
+}
+
+function findOrCreateRoom() {
+    for (const roomId in rooms) {
+        if (Object.keys(rooms[roomId].players).length < MAX_PLAYERS_PER_ROOM) {
+            return roomId;
+        }
+    }
+    // No available rooms, create a new one
+    const newRoomId = `room_${Date.now()}`;
+    createRoom(newRoomId);
+    return newRoomId;
+}
+
+function getSafeRandomPosition(room) {
     let position;
     let isSafe = false;
     let attempts = 0;
     while (!isSafe && attempts < GRID_SIZE * GRID_SIZE) {
         position = { x: Math.floor(Math.random() * GRID_SIZE), y: Math.floor(Math.random() * GRID_SIZE) };
         let occupied = false;
-        for (const playerId in players) {
-            const player = players[playerId];
-            if (!player.isAlive || player.isPaused) continue;
-            if (player.body) {
+        for (const playerId in room.players) {
+            const player = room.players[playerId];
+            if (player.isAlive && !player.isPaused && player.body) {
                 for (const segment of player.body) {
                     if (segment.x === position.x && segment.y === position.y) {
                         occupied = true;
@@ -84,22 +90,27 @@ function getSafeRandomPosition() {
     return position;
 }
 
-function addFood() {
-    while (food.length < Object.keys(players).length) {
-        food.push(getSafeRandomPosition());
+function addFood(room) {
+    const playerCount = Object.keys(room.players).length;
+    while (room.food.length < playerCount) {
+        room.food.push(getSafeRandomPosition(room));
     }
-    while (food.length > Object.keys(players).length && food.length > 0) {
-        food.pop();
+    while (room.food.length > playerCount && room.food.length > 0) {
+        room.food.pop();
     }
 }
 
-function gameLoop() {
-    for (const playerId in players) {
-        const player = players[playerId];
+function gameLoop(roomId) {
+    const room = rooms[roomId];
+    if (!room) return;
+
+    // --- Snake Movement & Food Collision ---
+    for (const playerId in room.players) {
+        const player = room.players[playerId];
         if (!player.isAlive || player.isPaused || player.spawnProtection > 0) {
-            if(player.spawnProtection > 0) player.spawnProtection--;
+            if (player.spawnProtection > 0) player.spawnProtection--;
             continue;
-        };
+        }
         const head = { ...player.body[0] };
         head.x += player.direction.x;
         head.y += player.direction.y;
@@ -109,7 +120,7 @@ function gameLoop() {
         if (head.y >= GRID_SIZE) head.y = 0;
         player.body.unshift(head);
         let ateFood = false;
-        food = food.filter(f => {
+        room.food = room.food.filter(f => {
             if (f.x === head.x && f.y === head.y) {
                 ateFood = true;
                 player.score++;
@@ -118,16 +129,19 @@ function gameLoop() {
             return true;
         });
         if (ateFood) {
-            addFood();
+            addFood(room);
         } else {
             player.body.pop();
         }
     }
-    const playerIds = Object.keys(players);
+
+    // --- Inter-snake Collision ---
+    const playerIds = Object.keys(room.players);
     for (const playerId of playerIds) {
-        const player = players[playerId];
+        const player = room.players[playerId];
         if (!player.isAlive || player.isPaused) continue;
         const head = player.body[0];
+        // Self-collision
         for (let i = 1; i < player.body.length; i++) {
             if (head.x === player.body[i].x && head.y === player.body[i].y) {
                 player.isAlive = false;
@@ -135,9 +149,10 @@ function gameLoop() {
             }
         }
         if (!player.isAlive) continue;
+        // Other player collision
         for (const otherPlayerId of playerIds) {
             if (playerId === otherPlayerId) continue;
-            const otherPlayer = players[otherPlayerId];
+            const otherPlayer = room.players[otherPlayerId];
             if (!otherPlayer.isAlive || otherPlayer.isPaused) continue;
             for (let i = 0; i < otherPlayer.body.length; i++) {
                 if (head.x === otherPlayer.body[i].x && head.y === otherPlayer.body[i].y) {
@@ -148,13 +163,15 @@ function gameLoop() {
             if (!player.isAlive) break;
         }
     }
-    io.emit('gameState', { players, food });
+
+    io.to(roomId).emit('gameState', { players: room.players, food: room.food });
 }
 
+// --- Socket.IO Connection Handling ---
 io.on('connection', (socket) => {
     const ip = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
-    console.log(`A user connected from IP: ${ip}`);
     
+    // --- Database Logging ---
     const now = new Date().toISOString();
     db.get('SELECT * FROM players WHERE ip = ?', [ip], (err, row) => {
         if (err) return console.error("DB Error:", err.message);
@@ -164,46 +181,52 @@ io.on('connection', (socket) => {
             });
         } else {
             db.run('INSERT INTO players (ip, first_seen, last_seen, visit_count) VALUES (?, ?, ?, 1)', [ip, now, now], (err) => {
-                 if (!err) broadcastStats();
+                if (!err) broadcastStats();
             });
         }
     });
 
-    players[socket.id] = { name: generateRandomName(), body: [], direction: { x: 0, y: 0 }, score: 0, isAlive: false, spawnProtection: 0, isPaused: false };
-    addFood();
-    socket.emit('init', { id: socket.id, name: players[socket.id].name });
-    if (Object.keys(players).length === 1 && !gameInterval) {
-        gameInterval = setInterval(gameLoop, TICK_RATE);
+    // --- Room Assignment ---
+    const roomId = findOrCreateRoom();
+    socket.join(roomId);
+    socket.roomId = roomId;
+
+    const room = rooms[roomId];
+    room.players[socket.id] = { name: generateRandomName(), body: [], direction: { x: 0, y: 0 }, score: 0, isAlive: false, spawnProtection: 0, isPaused: false };
+    
+    addFood(room);
+    socket.emit('init', { id: socket.id, name: room.players[socket.id].name, roomId: roomId });
+    
+    if (Object.keys(room.players).length === 1 && !room.gameInterval) {
+        room.gameInterval = setInterval(() => gameLoop(roomId), TICK_RATE);
     }
     
-    // --- Admin Socket Events ---
+    // --- Admin Events ---
     socket.on('adminAuth', (password) => {
         if (password === 'Java123@sql') {
             socket.join('admins');
-            // Send initial data on successful auth
             db.all('SELECT * FROM players ORDER BY last_seen DESC', [], (err, rows) => {
-                if (!err) {
-                    socket.emit('statsUpdated', rows);
-                }
+                if (!err) socket.emit('statsUpdated', rows);
             });
         } else {
             socket.emit('authFailed');
         }
     });
 
-    // --- Game Socket Events ---
+    // --- Game Events ---
     socket.on('startGame', () => {
-        if (players[socket.id] && !players[socket.id].isAlive) {
-            players[socket.id].body = [getSafeRandomPosition()];
-            players[socket.id].direction = { x: 0, y: 0 };
-            players[socket.id].isAlive = true;
-            players[socket.id].score = 0;
-            players[socket.id].spawnProtection = 2;
-            players[socket.id].isPaused = false;
+        const player = room.players[socket.id];
+        if (player && !player.isAlive) {
+            player.body = [getSafeRandomPosition(room)];
+            player.direction = { x: 0, y: 0 };
+            player.isAlive = true;
+            player.score = 0;
+            player.spawnProtection = 2;
+            player.isPaused = false;
         }
     });
     socket.on('directionChange', (newDirection) => {
-        const player = players[socket.id];
+        const player = room.players[socket.id];
         if (player && player.isAlive && !player.isPaused) {
             if (player.body.length > 1) {
                 if (newDirection.x !== 0 && player.direction.x === -newDirection.x) return;
@@ -213,29 +236,26 @@ io.on('connection', (socket) => {
         }
     });
     socket.on('toggle-pause', () => {
-        if (players[socket.id] && players[socket.id].isAlive) {
-            players[socket.id].isPaused = !players[socket.id].isPaused;
+        const player = room.players[socket.id];
+        if (player && player.isAlive) {
+            player.isPaused = !player.isPaused;
         }
     });
+
+    // --- Disconnect Handling ---
     socket.on('disconnect', () => {
         console.log('A user disconnected:', socket.id);
-        delete players[socket.id];
-        addFood();
-        if (Object.keys(players).length === 0) {
-            clearInterval(gameInterval);
-            gameInterval = null;
-            food = [];
+        if (room) {
+            delete room.players[socket.id];
+            addFood(room);
+            if (Object.keys(room.players).length === 0) {
+                clearInterval(room.gameInterval);
+                delete rooms[roomId];
+                console.log(`Room closed: ${roomId}`);
+            }
         }
     });
 });
-
-// --- Admin Routes ---
-app.get('/admin', (req, res) => {
-    res.sendFile(__dirname + '/public/admin.html');
-});
-
-// The POST route is no longer needed, as auth is handled by WebSockets
-// app.post('/admin-data', ...);
 
 server.listen(PORT, () => {
     console.log(`Snake server running on http://localhost:${PORT}`);

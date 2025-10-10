@@ -98,6 +98,13 @@ function gameLoop(roomId) {
     const room = rooms[roomId];
     if (!room) return;
 
+    // Allow players to change direction once per tick
+    for (const playerId in room.players) {
+        if (room.players[playerId]) {
+            room.players[playerId].canChangeDirection = true;
+        }
+    }
+
     for (const playerId in room.players) {
         const player = room.players[playerId];
         if (!player.isAlive || player.isPaused || player.spawnProtection > 0) {
@@ -171,7 +178,7 @@ io.on('connection', (socket) => {
         socket.disconnect();
         return;
     }
-    room.players[socket.id] = { name: generateRandomName(), body: [], direction: { x: 0, y: 0 }, score: 0, isAlive: false, spawnProtection: 0, isPaused: false };
+    room.players[socket.id] = { name: generateRandomName(), body: [], direction: { x: 0, y: 0 }, score: 0, isAlive: false, spawnProtection: 0, isPaused: false, canChangeDirection: true };
     
     socket.emit('init', { id: socket.id, name: room.players[socket.id].name, roomId: roomId });
     
@@ -206,15 +213,14 @@ io.on('connection', (socket) => {
         if (!room || !room.players[socket.id]) return;
         const player = room.players[socket.id];
         
-        if (player && player.isAlive && !player.isPaused && (newDirection.x !== 0 || newDirection.y !== 0)) {
-            // CHANGE: New, more robust anti-reversal logic that works for diagonals.
+        if (player && player.isAlive && !player.isPaused && player.canChangeDirection) {
             if (player.body.length > 1) {
-                // A move is a reversal if the new direction is the exact opposite of the current one.
                 if (newDirection.x === -player.direction.x && newDirection.y === -player.direction.y) {
                     return;
                 }
             }
             player.direction = newDirection;
+            player.canChangeDirection = false; // Prevent further changes until the next tick
         }
     });
     socket.on('toggle-pause', () => {

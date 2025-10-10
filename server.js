@@ -172,7 +172,16 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     socket.roomId = roomId;
 
+    // --- FIX FOR A CRITICAL RACE CONDITION ---
+    // Re-fetch the room after joining to ensure it wasn't deleted by another
+    // player disconnecting at the exact same time. This prevents a server crash.
     const room = rooms[roomId];
+    if (!room) {
+        console.error(`Race condition detected: Room ${roomId} was not found for player ${socket.id}. Disconnecting.`);
+        socket.disconnect();
+        return;
+    }
+
     room.players[socket.id] = { name: generateRandomName(), body: [], direction: { x: 0, y: 0 }, score: 0, isAlive: false, spawnProtection: 0, isPaused: false };
     
     addFood(room);
@@ -191,7 +200,7 @@ io.on('connection', (socket) => {
 
     socket.on('startGame', () => {
         const room = rooms[socket.roomId];
-        if (!room || !room.players[socket.id]) return; // Safety Check
+        if (!room || !room.players[socket.id]) return; 
         const player = room.players[socket.id];
         if (player && !player.isAlive) {
             player.body = [getSafeRandomPosition(room)];
@@ -204,7 +213,7 @@ io.on('connection', (socket) => {
     });
     socket.on('directionChange', (newDirection) => {
         const room = rooms[socket.roomId];
-        if (!room || !room.players[socket.id]) return; // Safety Check
+        if (!room || !room.players[socket.id]) return;
         const player = room.players[socket.id];
         if (player && player.isAlive && !player.isPaused) {
             if (player.body.length > 1) {
@@ -216,7 +225,7 @@ io.on('connection', (socket) => {
     });
     socket.on('toggle-pause', () => {
         const room = rooms[socket.roomId];
-        if (!room || !room.players[socket.id]) return; // Safety Check
+        if (!room || !room.players[socket.id]) return;
         const player = room.players[socket.id];
         if (player && player.isAlive) {
             player.isPaused = !player.isPaused;

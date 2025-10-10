@@ -29,7 +29,7 @@ function broadcastStats() {
 // --- Game State Management ---
 const GRID_SIZE = 30;
 const TICK_RATE = 120;
-let rooms = {}; // Object to hold all game rooms
+let rooms = {};
 
 // --- Player Name Generation ---
 const ADJECTIVES = ["Agile", "Brave", "Clever", "Daring", "Eager", "Fast", "Glowing", "Happy", "Iron", "Jolly", "Keen", "Lucky"];
@@ -44,12 +44,7 @@ function generateRandomName() {
 
 // --- Room & Game Logic ---
 function createRoom(roomId) {
-    rooms[roomId] = {
-        id: roomId,
-        players: {},
-        food: [],
-        gameInterval: null
-    };
+    rooms[roomId] = { id: roomId, players: {}, food: [], gameInterval: null };
     console.log(`Room created: ${roomId}`);
 }
 
@@ -73,7 +68,7 @@ function getSafeRandomPosition(room) {
         let occupied = false;
         for (const playerId in room.players) {
             const player = room.players[playerId];
-            if (player.isAlive && !player.isPaused && player.body) {
+            if (player.isAlive && !player.isPaused && player.body && player.body.length > 0) {
                 for (const segment of player.body) {
                     if (segment.x === position.x && segment.y === position.y) {
                         occupied = true;
@@ -90,7 +85,7 @@ function getSafeRandomPosition(room) {
 }
 
 function addFood(room) {
-    const playerCount = Object.keys(room.players).length;
+    const playerCount = Object.values(room.players).filter(p => p.isAlive).length;
     while (room.food.length < playerCount) {
         room.food.push(getSafeRandomPosition(room));
     }
@@ -133,8 +128,7 @@ function gameLoop(roomId) {
     const playerIds = Object.keys(room.players);
     for (const playerId of playerIds) {
         const player = room.players[playerId];
-        if (!player) continue; 
-        if (!player.isAlive || player.isPaused) continue;
+        if (!player || !player.isAlive || player.isPaused) continue;
         const head = player.body[0];
         for (let i = 1; i < player.body.length; i++) {
             if (head.x === player.body[i].x && head.y === player.body[i].y) {
@@ -172,19 +166,13 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     socket.roomId = roomId;
 
-    // --- FIX FOR A CRITICAL RACE CONDITION ---
-    // Re-fetch the room after joining to ensure it wasn't deleted by another
-    // player disconnecting at the exact same time. This prevents a server crash.
     const room = rooms[roomId];
-    if (!room) {
-        console.error(`Race condition detected: Room ${roomId} was not found for player ${socket.id}. Disconnecting.`);
+    if (!room) { // Safety check for race condition
         socket.disconnect();
         return;
     }
-
     room.players[socket.id] = { name: generateRandomName(), body: [], direction: { x: 0, y: 0 }, score: 0, isAlive: false, spawnProtection: 0, isPaused: false };
     
-    addFood(room);
     socket.emit('init', { id: socket.id, name: room.players[socket.id].name, roomId: roomId });
     
     if (Object.keys(room.players).length === 1 && !room.gameInterval) {
@@ -200,7 +188,7 @@ io.on('connection', (socket) => {
 
     socket.on('startGame', () => {
         const room = rooms[socket.roomId];
-        if (!room || !room.players[socket.id]) return; 
+        if (!room || !room.players[socket.id]) return;
         const player = room.players[socket.id];
         if (player && !player.isAlive) {
             player.body = [getSafeRandomPosition(room)];
@@ -209,6 +197,7 @@ io.on('connection', (socket) => {
             player.score = 0;
             player.spawnProtection = 2;
             player.isPaused = false;
+            addFood(room); // Add food for the new player
         }
     });
     socket.on('directionChange', (newDirection) => {
@@ -236,8 +225,8 @@ io.on('connection', (socket) => {
         console.log('A user disconnected:', socket.id);
         const roomId = socket.roomId;
         if (roomId && rooms[roomId] && rooms[roomId].players[socket.id]) {
-            const room = rooms[roomId];
-            delete room.players[socket.id];
+            delete rooms[roomId].players[socket.id];
+            const room = rooms[roomId]; // re-fetch room
             addFood(room);
             if (Object.keys(room.players).length === 0) {
                 clearInterval(room.gameInterval);

@@ -14,17 +14,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const pauseBtnDesktop = document.getElementById('pause-btn-desktop');
 
     // Mobile UI
-    const startBtnMobile = document.getElementById('start-respawn-btn-mobile');
-    const pauseBtnMobile = document.getElementById('pause-btn-mobile');
-    const toggleControlsBtn = document.getElementById('toggle-controls-btn');
-    
-    // Mobile Dropdown Menu
     const menuToggleBtn = document.getElementById('menu-toggle-btn');
     const mobileMenuDropdown = document.getElementById('mobile-menu-dropdown');
+    const startBtnMobile = document.getElementById('start-respawn-btn-mobile');
+    const pauseBtnMobile = document.getElementById('pause-btn-mobile');
+    const playersModalBtn = document.getElementById('players-modal-btn');
+    const toggleControlsBtn = document.getElementById('toggle-controls-btn');
     
     // Players Modal
     const playersModal = document.getElementById('players-modal');
-    const playersModalBtn = document.getElementById('players-modal-btn');
     const closeModalBtn = document.getElementById('close-modal-btn');
     const playerListMobile = document.getElementById('player-list-mobile');
     const yourNameMobile = document.getElementById('your-name-mobile');
@@ -32,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Pause Overlay
     const pauseOverlay = document.getElementById('pause-overlay');
 
-    // Joystick Container
+    // Joystick
     const joystickContainer = document.getElementById('joystick-container');
     let joystick = null;
 
@@ -44,14 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let touchDragEnabled = true;
 
     // --- Connection Handling ---
-    socket.on('connect', () => {
-        gameStatus.textContent = 'Finding a game...';
-    });
-
-    socket.on('connect_error', () => {
-        gameStatus.textContent = 'Connection failed. Please refresh.';
-    });
-
+    socket.on('connect', () => { gameStatus.textContent = 'Finding a game...'; });
+    socket.on('connect_error', () => { gameStatus.textContent = 'Connection failed. Please refresh.'; });
     socket.on('init', ({ id, name, roomId }) => {
         selfId = id;
         yourNameDesktop.textContent = name;
@@ -82,17 +74,19 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillStyle = '#1a202c';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#f56565';
-        food.forEach(f => ctx.fillRect(f.x * scale, f.y * scale, scale, scale));
-        for (const id in players) {
-            const player = players[id];
-            if (!player.isAlive || player.isPaused || !player.body) continue;
-            ctx.fillStyle = id === selfId ? '#48bb78' : '#63b3ed';
-            player.body.forEach(segment => ctx.fillRect(segment.x * scale, segment.y * scale, scale, scale));
+        if(food) food.forEach(f => ctx.fillRect(f.x * scale, f.y * scale, scale, scale));
+        if(players) {
+            for (const id in players) {
+                const player = players[id];
+                if (!player.isAlive || player.isPaused || !player.body) continue;
+                ctx.fillStyle = id === selfId ? '#48bb78' : '#63b3ed';
+                player.body.forEach(segment => ctx.fillRect(segment.x * scale, segment.y * scale, scale, scale));
+            }
         }
     }
     
     function updateUI(state) {
-        if (!playerListDesktop || !state) return;
+        if (!playerListDesktop || !state || !state.players) return;
         const { players } = state;
         const sortedPlayers = Object.values(players).sort((a, b) => b.score - a.score);
         playerListDesktop.innerHTML = '';
@@ -124,34 +118,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Event Listeners ---
-    function handleStart() {
-        socket.emit('startGame');
-        hasJoinedGame = true;
-    }
-    function handlePause() {
-        socket.emit('toggle-pause');
-    }
+    function handleStart() { socket.emit('startGame'); hasJoinedGame = true; }
+    function handlePause() { socket.emit('toggle-pause'); }
+
     startBtnDesktop.addEventListener('click', handleStart);
     pauseBtnDesktop.addEventListener('click', handlePause);
-    closeModalBtn.addEventListener('click', () => playersModal.classList.add('hidden'));
-
-    // Mobile Menu Logic
-    if (menuToggleBtn) {
-        menuToggleBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            mobileMenuDropdown.classList.toggle('hidden');
-        });
-        document.addEventListener('click', (e) => {
-            if (!mobileMenuDropdown.classList.contains('hidden') && !mobileMenuDropdown.contains(e.target)) {
-                mobileMenuDropdown.classList.add('hidden');
-            }
-        });
-    }
-
     startBtnMobile.addEventListener('click', () => { handleStart(); mobileMenuDropdown.classList.add('hidden'); });
-    playersModalBtn.addEventListener('click', () => { playersModal.classList.remove('hidden'); mobileMenuDropdown.classList.add('hidden'); });
     pauseBtnMobile.addEventListener('click', () => { handlePause(); mobileMenuDropdown.classList.add('hidden'); });
     
+    playersModalBtn.addEventListener('click', () => { playersModal.classList.remove('hidden'); mobileMenuDropdown.classList.add('hidden'); });
+    closeModalBtn.addEventListener('click', () => playersModal.classList.add('hidden'));
+
+    menuToggleBtn.addEventListener('click', (e) => { e.stopPropagation(); mobileMenuDropdown.classList.toggle('hidden'); });
+    document.addEventListener('click', (e) => {
+        if (!mobileMenuDropdown.classList.contains('hidden') && !mobileMenuDropdown.contains(e.target) && e.target !== menuToggleBtn) {
+            mobileMenuDropdown.classList.add('hidden');
+        }
+    });
+
     // --- Controls ---
     document.addEventListener('keydown', (e) => {
         let direction = null;
@@ -193,7 +177,6 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.addEventListener('touchstart', handleCanvasTouch);
     canvas.addEventListener('touchmove', handleCanvasTouch);
 
-    // --- Control Toggling & Joystick ---
     function createJoystick() {
         if (joystick) joystick.destroy();
         joystickContainer.classList.remove('hidden');
@@ -201,7 +184,8 @@ document.addEventListener('DOMContentLoaded', () => {
             zone: joystickContainer,
             mode: 'static',
             position: { right: '75px', bottom: '75px' },
-            color: 'cyan'
+            color: 'cyan',
+            size: 150
         });
         joystick.on('dir:up dir:down dir:left dir:right', (evt, data) => {
             let direction = null;
@@ -227,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
         touchDragEnabled = !touchDragEnabled;
         if (touchDragEnabled) {
             destroyJoystick();
-            controlsHelper.textContent = 'Touch and drag on the canvas to guide your snake.';
+            controlsHelper.textContent = 'Touch/drag on canvas to move.';
             toggleControlsBtn.textContent = 'Use Joystick';
         } else {
             createJoystick();
@@ -237,9 +221,8 @@ document.addEventListener('DOMContentLoaded', () => {
         mobileMenuDropdown.classList.add('hidden');
     });
 
-    // Initial setup for touch devices
     if ('ontouchstart' in window || navigator.maxTouchPoints) {
-        controlsHelper.textContent = 'Touch and drag on the canvas to guide your snake.';
+        controlsHelper.textContent = 'Touch/drag on canvas to move.';
     }
 });
 

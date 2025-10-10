@@ -59,7 +59,6 @@ function findOrCreateRoom() {
             return roomId;
         }
     }
-    // No available rooms, create a new one
     const newRoomId = `room_${Date.now()}`;
     createRoom(newRoomId);
     return newRoomId;
@@ -104,7 +103,6 @@ function gameLoop(roomId) {
     const room = rooms[roomId];
     if (!room) return;
 
-    // --- Snake Movement & Food Collision ---
     for (const playerId in room.players) {
         const player = room.players[playerId];
         if (!player.isAlive || player.isPaused || player.spawnProtection > 0) {
@@ -128,20 +126,15 @@ function gameLoop(roomId) {
             }
             return true;
         });
-        if (ateFood) {
-            addFood(room);
-        } else {
-            player.body.pop();
-        }
+        if (ateFood) addFood(room);
+        else player.body.pop();
     }
 
-    // --- Inter-snake Collision ---
     const playerIds = Object.keys(room.players);
     for (const playerId of playerIds) {
         const player = room.players[playerId];
         if (!player.isAlive || player.isPaused) continue;
         const head = player.body[0];
-        // Self-collision
         for (let i = 1; i < player.body.length; i++) {
             if (head.x === player.body[i].x && head.y === player.body[i].y) {
                 player.isAlive = false;
@@ -149,7 +142,6 @@ function gameLoop(roomId) {
             }
         }
         if (!player.isAlive) continue;
-        // Other player collision
         for (const otherPlayerId of playerIds) {
             if (playerId === otherPlayerId) continue;
             const otherPlayer = room.players[otherPlayerId];
@@ -163,30 +155,18 @@ function gameLoop(roomId) {
             if (!player.isAlive) break;
         }
     }
-
     io.to(roomId).emit('gameState', { players: room.players, food: room.food });
 }
 
-// --- Socket.IO Connection Handling ---
 io.on('connection', (socket) => {
     const ip = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
-    
-    // --- Database Logging ---
     const now = new Date().toISOString();
     db.get('SELECT * FROM players WHERE ip = ?', [ip], (err, row) => {
         if (err) return console.error("DB Error:", err.message);
-        if (row) {
-            db.run('UPDATE players SET last_seen = ?, visit_count = visit_count + 1 WHERE ip = ?', [now, ip], (err) => {
-                if (!err) broadcastStats();
-            });
-        } else {
-            db.run('INSERT INTO players (ip, first_seen, last_seen, visit_count) VALUES (?, ?, ?, 1)', [ip, now, now], (err) => {
-                if (!err) broadcastStats();
-            });
-        }
+        if (row) db.run('UPDATE players SET last_seen = ?, visit_count = visit_count + 1 WHERE ip = ?', [now, ip], (err) => { if (!err) broadcastStats(); });
+        else db.run('INSERT INTO players (ip, first_seen, last_seen, visit_count) VALUES (?, ?, ?, 1)', [ip, now, now], (err) => { if (!err) broadcastStats(); });
     });
 
-    // --- Room Assignment ---
     const roomId = findOrCreateRoom();
     socket.join(roomId);
     socket.roomId = roomId;
@@ -201,19 +181,13 @@ io.on('connection', (socket) => {
         room.gameInterval = setInterval(() => gameLoop(roomId), TICK_RATE);
     }
     
-    // --- Admin Events ---
     socket.on('adminAuth', (password) => {
         if (password === 'Java123@sql') {
             socket.join('admins');
-            db.all('SELECT * FROM players ORDER BY last_seen DESC', [], (err, rows) => {
-                if (!err) socket.emit('statsUpdated', rows);
-            });
-        } else {
-            socket.emit('authFailed');
-        }
+            db.all('SELECT * FROM players ORDER BY last_seen DESC', [], (err, rows) => { if (!err) socket.emit('statsUpdated', rows); });
+        } else socket.emit('authFailed');
     });
 
-    // --- Game Events ---
     socket.on('startGame', () => {
         const player = room.players[socket.id];
         if (player && !player.isAlive) {
@@ -242,10 +216,11 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- Disconnect Handling ---
     socket.on('disconnect', () => {
         console.log('A user disconnected:', socket.id);
-        if (room) {
+        const roomId = socket.roomId;
+        if (roomId && rooms[roomId]) {
+            const room = rooms[roomId];
             delete room.players[socket.id];
             addFood(room);
             if (Object.keys(room.players).length === 0) {

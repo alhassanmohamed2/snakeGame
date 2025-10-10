@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let GRID_SIZE = 30;
     let hasJoinedGame = false;
     let lastGameState = null; 
-    let touchDragEnabled = true;
+    let touchDragEnabled = false; 
 
     // --- Connection Handling ---
     socket.on('connect', () => { gameStatus.textContent = 'Finding a game...'; });
@@ -218,21 +218,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const dx = touchX - headPixelX;
         const dy = touchY - headPixelY;
         
-        // CHANGE: New logic to calculate 8-directional movement from touch angle.
-        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return; // Ignore taps near the center
+        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
 
         const angle = Math.atan2(dy, dx);
         const pi = Math.PI;
         let newDirection = null;
 
-        if (angle > -pi / 8 && angle <= pi / 8) newDirection = { x: 1, y: 0 }; // Right
-        else if (angle > pi / 8 && angle <= 3 * pi / 8) newDirection = { x: 1, y: 1 }; // Down-Right
-        else if (angle > 3 * pi / 8 && angle <= 5 * pi / 8) newDirection = { x: 0, y: 1 }; // Down
-        else if (angle > 5 * pi / 8 && angle <= 7 * pi / 8) newDirection = { x: -1, y: 1 }; // Down-Left
-        else if (angle > 7 * pi / 8 || angle <= -7 * pi / 8) newDirection = { x: -1, y: 0 }; // Left
-        else if (angle > -7 * pi / 8 && angle <= -5 * pi / 8) newDirection = { x: -1, y: -1 }; // Up-Left
-        else if (angle > -5 * pi / 8 && angle <= -3 * pi / 8) newDirection = { x: 0, y: -1 }; // Up
-        else if (angle > -3 * pi / 8 && angle <= -pi / 8) newDirection = { x: 1, y: -1 }; // Up-Right
+        if (angle > -pi / 8 && angle <= pi / 8) newDirection = { x: 1, y: 0 };
+        else if (angle > pi / 8 && angle <= 3 * pi / 8) newDirection = { x: 1, y: 1 };
+        else if (angle > 3 * pi / 8 && angle <= 5 * pi / 8) newDirection = { x: 0, y: 1 };
+        else if (angle > 5 * pi / 8 && angle <= 7 * pi / 8) newDirection = { x: -1, y: 1 };
+        else if (angle > 7 * pi / 8 || angle <= -7 * pi / 8) newDirection = { x: -1, y: 0 };
+        else if (angle > -7 * pi / 8 && angle <= -5 * pi / 8) newDirection = { x: -1, y: -1 };
+        else if (angle > -5 * pi / 8 && angle <= -3 * pi / 8) newDirection = { x: 0, y: -1 };
+        else if (angle > -3 * pi / 8 && angle <= -pi / 8) newDirection = { x: 1, y: -1 };
 
         if (newDirection) {
             socket.emit('directionChange', newDirection);
@@ -247,23 +246,37 @@ document.addEventListener('DOMContentLoaded', () => {
         joystick = nipplejs.create({
             zone: joystickContainer,
             mode: 'static',
-            position: { right: '75px', bottom: '75px' },
+            position: { left: '50%', bottom: '75px' },
             color: 'cyan',
             size: 150
         });
-        joystick.on('dir:up dir:down dir:left dir:right dir:up-left dir:up-right dir:down-left dir:down-right', (evt, data) => {
-            let direction = null;
-            switch(data.direction.angle) {
-                case 'up': direction = { x: 0, y: -1 }; break;
-                case 'down': direction = { x: 0, y: 1 }; break;
-                case 'left': direction = { x: -1, y: 0 }; break;
-                case 'right': direction = { x: 1, y: 0 }; break;
-                case 'up-left': direction = { x: -1, y: -1 }; break;
-                case 'up-right': direction = { x: 1, y: -1 }; break;
-                case 'down-left': direction = { x: -1, y: 1 }; break;
-                case 'down-right': direction = { x: 1, y: 1 }; break;
+
+        // CHANGE: Added smarter input handling to prevent spamming the server.
+        // This makes joystick controls, especially diagonals, much more reliable.
+        let lastJoystickDirection = null;
+        joystick.on('move', (evt, data) => {
+            const angle = data.angle.radian;
+            const pi = Math.PI;
+            let newDirection = null;
+
+            if (angle > -pi / 8 && angle <= pi / 8) newDirection = { x: 1, y: 0 }; // Right
+            else if (angle > pi / 8 && angle <= 3 * pi / 8) newDirection = { x: 1, y: 1 }; // Down-Right
+            else if (angle > 3 * pi / 8 && angle <= 5 * pi / 8) newDirection = { x: 0, y: 1 }; // Down
+            else if (angle > 5 * pi / 8 && angle <= 7 * pi / 8) newDirection = { x: -1, y: 1 }; // Down-Left
+            else if (angle > 7 * pi / 8 || angle <= -7 * pi / 8) newDirection = { x: -1, y: 0 }; // Left
+            else if (angle > -7 * pi / 8 && angle <= -5 * pi / 8) newDirection = { x: -1, y: -1 }; // Up-Left
+            else if (angle > -5 * pi / 8 && angle <= -3 * pi / 8) newDirection = { x: 0, y: -1 }; // Up
+            else if (angle > -3 * pi / 8 && angle <= -pi / 8) newDirection = { x: 1, y: -1 }; // Up-Right
+
+            // Only send an update if the direction has changed
+            if (newDirection && JSON.stringify(newDirection) !== JSON.stringify(lastJoystickDirection)) {
+                socket.emit('directionChange', newDirection);
+                lastJoystickDirection = newDirection;
             }
-            if (direction) socket.emit('directionChange', direction);
+        });
+
+        joystick.on('end', () => {
+            lastJoystickDirection = null; // Reset on release
         });
     }
 
@@ -290,7 +303,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     if ('ontouchstart' in window || navigator.maxTouchPoints) {
-        controlsHelper.textContent = 'Touch/drag on canvas to move.';
+        touchDragEnabled = false; 
+        createJoystick();
+        controlsHelper.textContent = 'Use the joystick to move.';
+        toggleControlsBtn.textContent = 'Use Touch-Drag';
+    } else {
+        controlsHelper.textContent = 'Use WASD or Arrow Keys to move.';
     }
 });
 

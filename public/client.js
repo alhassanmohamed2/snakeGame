@@ -173,30 +173,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Controls ---
     const keysPressed = {};
-
-    function updateDirectionFromKeys() {
-        const direction = { x: 0, y: 0 };
-        if (keysPressed['w'] || keysPressed['ArrowUp']) direction.y = -1;
-        else if (keysPressed['s'] || keysPressed['ArrowDown']) direction.y = 1;
-        if (keysPressed['a'] || keysPressed['ArrowLeft']) direction.x = -1;
-        else if (keysPressed['d'] || keysPressed['ArrowRight']) direction.x = 1;
-
-        if (direction.x !== 0 || direction.y !== 0) {
-            socket.emit('directionChange', direction);
-        }
-    }
+    let lastKeyDirection = null;
 
     document.addEventListener('keydown', (e) => {
-        if (['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-            if (keysPressed[e.key]) return; 
-            keysPressed[e.key] = true;
-            updateDirectionFromKeys();
+        let direction = lastKeyDirection;
+        switch (e.key) {
+            case 'w': case 'ArrowUp': direction = { x: 0, y: -1 }; break;
+            case 's': case 'ArrowDown': direction = { x: 0, y: 1 }; break;
+            case 'a': case 'ArrowLeft': direction = { x: -1, y: 0 }; break;
+            case 'd': case 'ArrowRight': direction = { x: 1, y: 0 }; break;
+            default: return; // Ignore other keys
         }
-    });
-
-    document.addEventListener('keyup', (e) => {
-        if (['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-            keysPressed[e.key] = false;
+        
+        if (direction && JSON.stringify(direction) !== JSON.stringify(lastKeyDirection)) {
+            socket.emit('directionChange', direction);
+            lastKeyDirection = direction;
         }
     });
 
@@ -218,20 +209,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const dx = touchX - headPixelX;
         const dy = touchY - headPixelY;
         
-        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-
-        const angle = Math.atan2(dy, dx);
-        const pi = Math.PI;
         let newDirection = null;
-
-        if (angle > -pi / 8 && angle <= pi / 8) newDirection = { x: 1, y: 0 };
-        else if (angle > pi / 8 && angle <= 3 * pi / 8) newDirection = { x: 1, y: 1 };
-        else if (angle > 3 * pi / 8 && angle <= 5 * pi / 8) newDirection = { x: 0, y: 1 };
-        else if (angle > 5 * pi / 8 && angle <= 7 * pi / 8) newDirection = { x: -1, y: 1 };
-        else if (angle > 7 * pi / 8 || angle <= -7 * pi / 8) newDirection = { x: -1, y: 0 };
-        else if (angle > -7 * pi / 8 && angle <= -5 * pi / 8) newDirection = { x: -1, y: -1 };
-        else if (angle > -5 * pi / 8 && angle <= -3 * pi / 8) newDirection = { x: 0, y: -1 };
-        else if (angle > -3 * pi / 8 && angle <= -pi / 8) newDirection = { x: 1, y: -1 };
+        if (Math.abs(dx) > Math.abs(dy)) {
+            newDirection = { x: dx > 0 ? 1 : -1, y: 0 };
+        } else {
+            newDirection = { x: 0, y: dy > 0 ? 1 : -1 };
+        }
 
         if (newDirection) {
             socket.emit('directionChange', newDirection);
@@ -251,24 +234,16 @@ document.addEventListener('DOMContentLoaded', () => {
             size: 150
         });
 
-        // CHANGE: Added smarter input handling to prevent spamming the server.
-        // This makes joystick controls, especially diagonals, much more reliable.
         let lastJoystickDirection = null;
-        joystick.on('move', (evt, data) => {
-            const angle = data.angle.radian;
-            const pi = Math.PI;
+        joystick.on('dir:up dir:down dir:left dir:right', (evt, data) => {
             let newDirection = null;
+            const angle = data.direction.angle;
 
-            if (angle > -pi / 8 && angle <= pi / 8) newDirection = { x: 1, y: 0 }; // Right
-            else if (angle > pi / 8 && angle <= 3 * pi / 8) newDirection = { x: 1, y: 1 }; // Down-Right
-            else if (angle > 3 * pi / 8 && angle <= 5 * pi / 8) newDirection = { x: 0, y: 1 }; // Down
-            else if (angle > 5 * pi / 8 && angle <= 7 * pi / 8) newDirection = { x: -1, y: 1 }; // Down-Left
-            else if (angle > 7 * pi / 8 || angle <= -7 * pi / 8) newDirection = { x: -1, y: 0 }; // Left
-            else if (angle > -7 * pi / 8 && angle <= -5 * pi / 8) newDirection = { x: -1, y: -1 }; // Up-Left
-            else if (angle > -5 * pi / 8 && angle <= -3 * pi / 8) newDirection = { x: 0, y: -1 }; // Up
-            else if (angle > -3 * pi / 8 && angle <= -pi / 8) newDirection = { x: 1, y: -1 }; // Up-Right
+            if (angle === 'up') newDirection = { x: 0, y: -1 };
+            else if (angle === 'down') newDirection = { x: 0, y: 1 };
+            else if (angle === 'left') newDirection = { x: -1, y: 0 };
+            else if (angle === 'right') newDirection = { x: 1, y: 0 };
 
-            // Only send an update if the direction has changed
             if (newDirection && JSON.stringify(newDirection) !== JSON.stringify(lastJoystickDirection)) {
                 socket.emit('directionChange', newDirection);
                 lastJoystickDirection = newDirection;
@@ -276,7 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         joystick.on('end', () => {
-            lastJoystickDirection = null; // Reset on release
+            lastJoystickDirection = null;
         });
     }
 
